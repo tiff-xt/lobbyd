@@ -1,4 +1,4 @@
-# lobbyd
+<h1><img src="docs/logo.svg" alt="" width="40" align="top"> lobbyd</h1>
 
 Ticketing and registration backend for gaming tournaments and LAN events. FastAPI, Postgres, Redis.
 

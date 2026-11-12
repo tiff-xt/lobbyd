@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/lib/useSession";
+import { Logo } from "./Logo";
 
 export function Header() {
   const { signedIn, user, signOut } = useSession();
@@ -22,12 +23,7 @@ export function Header() {
     <header className="sticky top-0 z-20 border-b border-line bg-bg/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-6">
         <Link href="/" className="mr-3 flex items-center gap-2" aria-label="lobbyd home">
-          <span
-            aria-hidden
-            className="grid size-7 place-items-center rounded-md bg-gradient-to-br from-violet to-cyan font-display text-sm font-bold text-bg"
-          >
-            L
-          </span>
+          <Logo />
           <span className="font-display text-lg font-bold tracking-wide">lobbyd</span>
         </Link>
         <nav className="flex items-center">
