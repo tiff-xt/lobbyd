@@ -9,7 +9,7 @@ Each phase ends with something that runs and is tested. A phase is done when its
 | 2 | Catalog | Done |
 | 3 | Booking core | Done |
 | 4 | Payments and reliability | Done |
-| 5 | Performance under load | Not started |
+| 5 | Performance under load | Done |
 | 6 | Teams and waitlist | Not started |
 | 7 | Check-in and live brackets | Not started |
 | 8 | Observability and deployment | Not started |
@@ -45,7 +45,7 @@ Payment simulator service with signed webhooks and fault injection (delay, dupli
 
 ## Phase 5. Performance under load
 
-Caching for catalog and availability with stampede protection, rate limiting, waiting room ([ADR 0005](adr/0005-waiting-room-and-rate-limits.md)), Locust scenarios for the reference sale, alternative claim strategies behind one interface, query tuning with `EXPLAIN ANALYZE`, connection pool sizing.
+Caching for catalog and availability with stampede protection, rate limiting, waiting room ([ADR 0005](adr/0005-waiting-room-and-rate-limits.md)), Locust scenarios for the reference sale (scaled to the test machine), alternative claim strategies behind one interface, query tuning with `EXPLAIN ANALYZE`, connection pool sizing.
 
 **Done when:** `docs/benchmarks.md` exists with the hardware, method, and measured results for each claim strategy and for the sale scenario with and without the waiting room, including what was slow at first and what fixed it; ADR 0002 is updated with the outcome; a small load test runs in CI as a regression guard.
 

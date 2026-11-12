@@ -37,7 +37,7 @@ There are two kinds of inventory, and they behave differently:
 | Hold latency | p95 under 250 ms during a sale spike | The contended write path |
 | Availability | Browsing stays up even if payments or workers are degraded | Failure isolation between read and write paths |
 
-The first three are correctness properties and are never traded away. The latency figures are design targets. They become measured numbers in the benchmarks phase, and the results will be published whether or not they hit the target.
+The first three are correctness properties and are never traded away. The latency figures were design targets; the measured results, including where they are missed under overload, are in [benchmarks](benchmarks.md).
 
 ### Out of scope
 
@@ -175,7 +175,7 @@ Each of these has its own decision record. This section is the summary.
 | Retries cause duplicate holds or charges | Clients send an `Idempotency-Key`; the key and the response are stored in the same transaction as the effect | [0003](adr/0003-idempotency-keys.md) |
 | Order is paid but the email or ticket job is lost | Transactional outbox: the event is written in the same transaction as the state change and relayed afterwards. Consumers deduplicate | [0004](adr/0004-transactional-outbox.md) |
 | 100,000 people arrive at once | Virtual waiting room in front of the hold endpoint admits users at a rate the database can serve; per-user rate limits behind it | [0005](adr/0005-waiting-room-and-rate-limits.md) |
-| Everyone reloads the seat map | Layout cached for a long time, availability cached for about a second, with protection against many requests rebuilding the same entry at once | Phase 5, record to be written with measurements |
+| Everyone reloads the seat map | Layout cached for a long time, availability cached for about a second, with protection against many requests rebuilding the same entry at once | [0008](adr/0008-caching.md) |
 | Payment webhooks arrive twice, late, or out of order | Verify signature, record the provider's event id under a unique constraint, apply state transitions that are safe to repeat | [0003](adr/0003-idempotency-keys.md) |
 
 ### Why a simulated payment provider

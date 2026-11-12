@@ -4,7 +4,7 @@ Ticketing and registration backend for gaming tournaments and LAN events. FastAP
 
 Teams register for a limited number of competitor slots, spectators pick seats from a venue map, everyone pays, and tickets are scanned at the door. Popular tournaments sell out in seconds, so the interesting part is staying correct and fast when thousands of people want the same seats at once.
 
-> **Status: phases 1 to 4 and the demo client are complete.** You can browse tournaments, pick seats on a live map, hold them, pay through a simulated provider that can be told to misbehave, and receive tickets. Next is performance under load (caching, rate limits, the waiting room, benchmarks).
+> **Status: phases 1 to 5 and the demo client are complete.** Browse, queue for a turn when a sale is oversubscribed, pick seats on a live map, pay through a simulated provider that can be told to misbehave, and receive tickets. Load tested, with the [results](docs/benchmarks.md) published, bad numbers included. Next: team registration and the waitlist.
 
 ## Why this project exists
 
@@ -18,6 +18,7 @@ Teams register for a limited number of competitor slots, spectators pick seats f
 | [Data model](docs/data-model.md) | Postgres schema, constraints, indexes, and the reason for each |
 | [Decision records](docs/adr/README.md) | One short record per significant technical choice |
 | [Roadmap](docs/roadmap.md) | Build phases and what "done" means for each |
+| [Benchmarks](docs/benchmarks.md) | Load test results, what was slow at first, and what fixed it |
 | [Query plans](docs/query-plans.md) | What `EXPLAIN ANALYZE` showed for each hot query, and what was fixed |
 | [Errors](docs/errors.md) | Error format and every error code |
 
@@ -29,6 +30,7 @@ Teams register for a limited number of competitor slots, spectators pick seats f
 | Data | Postgres, Redis |
 | Demo client | Next.js, React, TypeScript, Tailwind CSS, TanStack Query, types generated from the API's OpenAPI document |
 | Testing | pytest against a real Postgres and Redis, Locust for load tests |
+| Caching and limits | Redis read-through cache with stampede protection, token-bucket rate limits, a waiting room |
 | Workspace | Nx monorepo, uv for Python, Docker Compose, GitHub Actions |
 
 **Free tooling only.** Everything here is open source and runs locally with Docker Compose at no cost. The hosted demo uses free tiers only, and nothing in the project requires a paid plan or a credit card.
@@ -116,6 +118,7 @@ npx nx serve web                        # demo client on http://localhost:3000
 | `npx nx boundaries api` | Checks module boundaries with import-linter |
 | `uv run lobbyd-seed` | Demo data. `--tournaments 50000` for a dataset big enough to study query plans; `--reset` wipes first |
 | `uv run lobbyd-admin set-role <email> organizer` | Change an account's role |
+| `cd apps/api && uv run python bench/run.py steady` | A load test against real processes (see [benchmarks](docs/benchmarks.md) for the scenarios) |
 | `npx nx generate api-client` | Regenerate the web client's TypeScript types from the API |
 | `npm run check` | All of the above for every project |
 
@@ -133,10 +136,12 @@ apps/api/            FastAPI application
     orders/          checkout
     tickets/         issued tickets
     payments/        payment records, provider client, webhook signatures
+    waitingroom/     the queue in front of oversubscribed sales
     notifications/   emails to buyers (recorded, not sent)
     worker.py        outbox relay, event handlers, housekeeping
     reconcile.py     cross-table consistency checks
   migrations/        Alembic migrations (the schema's source of truth)
+  bench/             load-test scenarios and their results
   tests/
 apps/paysim/         payment provider simulator (separate service)
 apps/web/            demo client (Next.js)

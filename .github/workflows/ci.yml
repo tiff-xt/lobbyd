@@ -54,6 +54,14 @@ jobs:
 
       - run: npx nx affected -t lint typecheck boundaries test build
 
+      # A short load test against real processes: fails on any server error
+      # or broken invariant. Not a performance measurement.
+      - name: Load smoke test
+        working-directory: apps/api
+        env:
+          LOBBYD_DATABASE_URL: postgresql+asyncpg://lobbyd:lobbyd@localhost:5432/lobbyd_test
+        run: uv run python bench/run.py smoke --workers 2
+
       # The web client's types are generated from the API. If the API changed
       # and they were not regenerated, fail here instead of at run time.
       - name: API client types are up to date

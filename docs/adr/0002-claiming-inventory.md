@@ -1,6 +1,6 @@
 # 0002. Claim inventory with conditional writes in Postgres
 
-**Status:** Accepted and implemented (phase 3). Strategy comparison by benchmark still to come (phase 5)
+**Status:** Accepted, implemented (phase 3), and confirmed by benchmark (phase 5)
 
 ## Context
 
@@ -104,4 +104,9 @@ The seat row still pointing at this hold is the proof the buyer still owns it. N
 
 ## Validation
 
-Phase 5 implements options A, B, and D behind one interface (and C as an experiment) and runs the same contended load against each: N users, far fewer seats, random overlap. The benchmark records throughput, latency percentiles, wasted work, and invariant violations for each. This record will be updated with the results, and changed if the results say so.
+Done in phase 5. Four strategies sit behind one setting (`claim_strategy`): the one described here, a bare conditional update with no locks first, a `SKIP LOCKED` fail-fast variant, and a Redis lock in front of the claim. A parametrised test holds all four to the same correctness bar, and each was run under the same contended load.
+
+Result ([benchmarks, section 4](../benchmarks.md#4-claim-strategies-compared)): on the test machine they are indistinguishable, because the API's CPU is the bottleneck and Postgres is nearly idle. No strategy oversold, none deadlocked under load. The decision stands on its original grounds. Two details from the exercise:
+
+- The bare update avoided deadlocks only because Postgres happens to lock a multi-row update's rows in index order. Locking in the buyer's order, deliberately, in the test suite produced dozens. The chosen strategy's explicit order does not depend on that accident.
+- `SKIP LOCKED` is the variant worth measuring again on hardware where lock waits, not Python, dominate.
