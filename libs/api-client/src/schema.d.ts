@@ -201,6 +201,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teams/{team_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw a team
+         * @description Frees the slot for the waitlist. The entry fee is not refunded automatically.
+         */
+        delete: operations["withdraw_team_teams__team_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tournaments": {
         parameters: {
             query?: never;
@@ -300,6 +320,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tournaments/{slug}/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teams confirmed for a tournament */
+        get: operations["list_teams_tournaments__slug__teams_get"];
+        put?: never;
+        /**
+         * Register a team
+         * @description Claims a team slot and records the roster, together or not at all. The team is `pending` until the returned hold is checked out. Retry safely with the same Idempotency-Key.
+         */
+        post: operations["register_team_tournaments__slug__teams_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tournaments/{slug}/ticket-types": {
         parameters: {
             query?: never;
@@ -334,6 +375,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tournaments/{slug}/waitlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join the waitlist when team slots are full */
+        post: operations["join_waitlist_tournaments__slug__waitlist_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{slug}/waitlist/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My place on the waitlist
+         * @description When a slot is offered, `offered_hold_id` is the hold to check out.
+         */
+        get: operations["my_waitlist_entry_tournaments__slug__waitlist_me_get"];
+        put?: never;
+        post?: never;
+        /** Leave the waitlist */
+        delete: operations["leave_waitlist_tournaments__slug__waitlist_me_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/me": {
         parameters: {
             query?: never;
@@ -360,6 +439,23 @@ export interface paths {
         };
         /** My orders, newest first */
         get: operations["list_my_orders_users_me_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teams I captain */
+        get: operations["list_my_teams_users_me_teams_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -720,6 +816,16 @@ export interface components {
             /** Refresh Token */
             refresh_token: string;
         };
+        /** Roster */
+        Roster: {
+            /** Name */
+            name: string;
+            /**
+             * Roster
+             * @description In-game names, one per player
+             */
+            roster: string[];
+        };
         /** RowIn */
         RowIn: {
             /** Label */
@@ -811,6 +917,65 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * TeamCreate
+         * @description Register a team: claims a slot now, confirmed when the entry fee is paid.
+         *
+         *     Seats and standing tickets can be added to the same basket.
+         */
+        TeamCreate: {
+            /** Items */
+            items?: components["schemas"]["CountedItemIn"][];
+            /** Name */
+            name: string;
+            /**
+             * Roster
+             * @description In-game names, one per player
+             */
+            roster: string[];
+            /** Seat Ids */
+            seat_ids?: string[];
+        };
+        /** TeamOut */
+        TeamOut: {
+            /**
+             * Captain Id
+             * Format: uuid
+             */
+            captain_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Hold Id
+             * @description Only shown to the captain: the hold that pays for the entry
+             */
+            hold_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Roster */
+            roster: string[];
+            /** Status */
+            status: string;
+            /**
+             * Tournament Id
+             * Format: uuid
+             */
+            tournament_id: string;
+        };
+        /** TeamRegistration */
+        TeamRegistration: {
+            /** @description Check this out to confirm the team */
+            hold: components["schemas"]["HoldOut"];
+            team: components["schemas"]["TeamOut"];
         };
         /** TicketOut */
         TicketOut: {
@@ -1132,6 +1297,42 @@ export interface components {
             name: string;
             /** Timezone */
             timezone: string;
+        };
+        /** WaitlistOut */
+        WaitlistOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Offered Hold Id
+             * @description When a slot has been offered: the hold to check out before it lapses
+             */
+            offered_hold_id: string | null;
+            /**
+             * Position
+             * @description 1 means next in line. Null once no longer waiting
+             */
+            position: number | null;
+            /** Roster */
+            roster: string[];
+            /** Status */
+            status: string;
+            /**
+             * Tournament Id
+             * Format: uuid
+             */
+            tournament_id: string;
         };
     };
     responses: never;
@@ -1528,6 +1729,35 @@ export interface operations {
             };
         };
     };
+    withdraw_team_teams__team_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_tournaments_tournaments_get: {
         parameters: {
             query?: {
@@ -1756,6 +1986,76 @@ export interface operations {
             };
         };
     };
+    list_teams_tournaments__slug__teams_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamOut"][];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    register_team_tournaments__slug__teams_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admission-Token"?: string | null;
+                /** @description A random value (a UUID is ideal) generated once per intended action and sent again unchanged on every retry of it. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamRegistration"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     add_ticket_type_tournaments__slug__ticket_types_post: {
         parameters: {
             query?: never;
@@ -1798,6 +2098,101 @@ export interface operations {
             path: {
                 slug: string;
                 ticket_type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    join_waitlist_tournaments__slug__waitlist_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Roster"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitlistOut"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    my_waitlist_entry_tournaments__slug__waitlist_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitlistOut"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    leave_waitlist_tournaments__slug__waitlist_me_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
             };
             cookie?: never;
         };
@@ -1866,6 +2261,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderOut"][];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_my_teams_users_me_teams_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamOut"][];
                 };
             };
             /** @description The request is not valid */

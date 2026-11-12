@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 
 from pydantic import BaseModel
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lobbyd.catalog import service as catalog
@@ -83,3 +83,18 @@ async def for_orders(
             )
         )
     return tickets
+
+
+async def void(session: AsyncSession, order_id: uuid.UUID, ticket_type_id: uuid.UUID) -> int:
+    """Cancel an order's tickets of one type. Returns how many were still valid."""
+    voided = await session.execute(
+        update(Ticket)
+        .where(
+            Ticket.order_id == order_id,
+            Ticket.ticket_type_id == ticket_type_id,
+            Ticket.status == "valid",
+        )
+        .values(status="void")
+        .returning(Ticket.id)
+    )
+    return len(voided.all())

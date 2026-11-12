@@ -17,6 +17,7 @@ _MODEL_MODULES = (
     "lobbyd.payments.models",
     "lobbyd.notifications.models",
     "lobbyd.orders.models",
+    "lobbyd.teams.models",
 )
 
 

@@ -193,13 +193,61 @@ async def hold(
     items = []
     if general:
         items.append({"ticket_type_id": sale.general, "quantity": general})
+    headers = {**buyer, **(idempotency or key())}
     if team:
-        items.append({"ticket_type_id": sale.team, "quantity": 1})
+        # A team slot is only claimed by registering a team.
+        registered = await register_team(
+            client, buyer, sale, seats=seats, items=items, idempotency=headers
+        )
+        return _HoldOf(registered)
     return await client.post(
         "/holds",
         json={"tournament": sale.slug, "seat_ids": seats or [], "items": items},
-        headers={**buyer, **(idempotency or key())},
+        headers=headers,
     )
+
+
+def roster(tag: str, size: int = 5) -> list[str]:
+    return [f"{tag}-p{n + 1}" for n in range(size)]
+
+
+async def register_team(
+    client: AsyncClient,
+    captain: dict[str, str],
+    sale: Sale,
+    *,
+    name: str | None = None,
+    players: list[str] | None = None,
+    seats: list[str] | None = None,
+    items: list[Json] | None = None,
+    idempotency: dict[str, str] | None = None,
+) -> Any:
+    """Register a team. Name and roster default to ones nobody else has."""
+    tag = uuid4().hex[:8]
+    return await client.post(
+        f"/tournaments/{sale.slug}/teams",
+        json={
+            "name": name or f"Team {tag}",
+            "roster": players or roster(tag),
+            "seat_ids": seats or [],
+            "items": items or [],
+        },
+        headers={**captain, **(idempotency or key())},
+    )
+
+
+class _HoldOf:
+    """A team registration response, read as the hold inside it."""
+
+    def __init__(self, response: Any) -> None:
+        self.response = response
+        self.status_code: int = response.status_code
+        self.headers = response.headers
+        self.text: str = response.text
+
+    def json(self) -> Any:
+        body = self.response.json()
+        return body["hold"] if self.status_code == 201 else body
 
 
 async def checkout(

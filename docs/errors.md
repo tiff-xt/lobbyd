@@ -61,3 +61,15 @@ Every error response is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) pr
 | <a id="rate_limited"></a>`rate_limited` | 429 | Too many requests. `Retry-After` (and `retry_after` in the body) says how many seconds to wait. |
 | <a id="admission_required"></a>`admission_required` | 403 | The sale has a waiting room and the request carried no valid turn. Join the queue; send the token it gives you as `X-Admission-Token`. |
 | <a id="overloaded"></a>`overloaded` | 503 | Every database connection stayed busy for several seconds. Nothing was changed; retry after `Retry-After` seconds. Booking requests are safe to retry with the same idempotency key. |
+| <a id="team_registration_required"></a>`team_registration_required` | 422 | A team slot was put in a plain hold. Slots are claimed by registering a team. |
+| <a id="no_team_slots"></a>`no_team_slots` | 422 | This tournament has no team entry. |
+| <a id="wrong_roster_size"></a>`wrong_roster_size` | 422 | The roster does not have exactly as many players as the format asks for. `team_size` says how many. |
+| <a id="team_name_taken"></a>`team_name_taken` | 409 | Another team in this tournament has that name (case is ignored). Nothing was held. |
+| <a id="player_already_registered"></a>`player_already_registered` | 409 | A listed player is already on another team in this tournament. Nothing was held. |
+| <a id="already_registered"></a>`already_registered` | 409 | The caller already captains a team in this tournament. |
+| <a id="registration_closed"></a>`registration_closed` | 409 | Team entry closed when the tournament started. |
+| <a id="team_not_found"></a>`team_not_found` | 404 | No such team, or not one the caller captains. |
+| <a id="tournament_started"></a>`tournament_started` | 409 | A team cannot withdraw once the tournament has started. |
+| <a id="slots_available"></a>`slots_available` | 409 | The waitlist is only for a full tournament. Register the team directly. |
+| <a id="already_waiting"></a>`already_waiting` | 409 | The caller already has a place on this tournament's waitlist. |
+| <a id="not_on_waitlist"></a>`not_on_waitlist` | 404 | The caller has never joined this tournament's waitlist. |

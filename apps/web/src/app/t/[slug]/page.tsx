@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { Cover } from "@/components/Cover";
 import { MAX_SEATS, SeatPicker } from "@/components/SeatPicker";
+import { draftProblem, emptyDraft, TeamEntry, type TeamDraft } from "@/components/TeamEntry";
 import { Notice, Spinner } from "@/components/ui";
 import { api, ApiError, idempotencyKey, type QueueStatus, unwrap } from "@/lib/api";
 import { dateTime, money, plural } from "@/lib/format";
@@ -57,6 +58,8 @@ export default function TournamentPage() {
   const [now] = useState(() => Date.now());
   const [seats, setSeats] = useState<Set<string>>(new Set());
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  // The team being entered, if any. Null until the captain opens the form.
+  const [teamDraft, setTeamDraft] = useState<TeamDraft | null>(null);
   const taken = useMemo(
     () => new Set([...(availability.data?.taken_seat_ids ?? []), ...gone]),
     [availability.data, gone],
@@ -67,24 +70,36 @@ export default function TournamentPage() {
 
   const hold = useMutation({
     // One key per attempt at this exact basket: an automatic retry reuses it.
-    mutationFn: async (key: string) =>
-      unwrap(
-        await api.POST("/holds", {
-          params: {
-            header: {
-              "Idempotency-Key": key,
-              "X-Admission-Token": queue.data?.admission_token ?? undefined,
+    mutationFn: async (key: string) => {
+      const header = {
+        "Idempotency-Key": key,
+        "X-Admission-Token": queue.data?.admission_token ?? undefined,
+      };
+      const basket = {
+        seat_ids: [...picked],
+        items: Object.entries(quantities)
+          .filter(([, quantity]) => quantity > 0)
+          .map(([ticket_type_id, quantity]) => ({ ticket_type_id, quantity })),
+      };
+      if (teamDraft?.on) {
+        // Entering a team claims its slot, its roster, and the rest of the
+        // basket in one request: all of it, or nothing.
+        const registered = unwrap(
+          await api.POST("/tournaments/{slug}/teams", {
+            params: { path: { slug }, header },
+            body: {
+              name: teamDraft.name.trim(),
+              roster: teamDraft.players.map((player) => player.trim()),
+              ...basket,
             },
-          },
-          body: {
-            tournament: slug,
-            seat_ids: [...picked],
-            items: Object.entries(quantities)
-              .filter(([, quantity]) => quantity > 0)
-              .map(([ticket_type_id, quantity]) => ({ ticket_type_id, quantity })),
-          },
-        }),
-      ),
+          }),
+        );
+        return registered.hold;
+      }
+      return unwrap(
+        await api.POST("/holds", { params: { header }, body: { tournament: slug, ...basket } }),
+      );
+    },
     onSuccess: (created) => router.push(`/checkout/${created.id}`),
     onError: (error) => {
       if (error instanceof ApiError) {
@@ -109,7 +124,12 @@ export default function TournamentPage() {
   const t = tournament.data;
   const left = new Map(availability.data?.ticket_types.map((a) => [a.ticket_type_id, a.available]));
   const reserved = t.ticket_types.filter((type) => type.kind === "reserved");
-  const counted = t.ticket_types.filter((type) => type.kind !== "reserved");
+  const counted = t.ticket_types.filter((type) => type.kind === "general");
+  const slot = t.ticket_types.find((type) => type.kind === "competitor");
+  const team = teamDraft ?? emptyDraft(t.team_size);
+  const entering =
+    !!slot && team.on && (left.get(slot.id) ?? 0) > 0 && new Date(t.starts_at).getTime() > now;
+  const teamProblem = entering ? draftProblem(team) : null;
   const priceOfSeat = new Map<string, number>();
   if (seatMap.data) {
     for (const type of reserved) {
@@ -120,9 +140,13 @@ export default function TournamentPage() {
     }
   }
   const seatTotal = [...picked].reduce((sum, id) => sum + (priceOfSeat.get(id) ?? 0), 0);
-  const countedTotal = counted.reduce((sum, type) => sum + (quantities[type.id] ?? 0) * type.price_cents, 0);
-  const itemCount = picked.size + Object.values(quantities).reduce((a, b) => a + b, 0);
+  const countedTotal =
+    counted.reduce((sum, type) => sum + (quantities[type.id] ?? 0) * type.price_cents, 0) +
+    (entering && slot ? slot.price_cents : 0);
+  const itemCount =
+    picked.size + Object.values(quantities).reduce((a, b) => a + b, 0) + (entering ? 1 : 0);
   const notOpen = new Date(t.sales_open_at).getTime() > now;
+  const started = new Date(t.starts_at).getTime() <= now;
   const closed = !["published", "live"].includes(t.status) || new Date(t.ends_at).getTime() <= now;
 
   const toggleSeat = (id: string) => {
@@ -174,22 +198,33 @@ export default function TournamentPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-8">
+          {slot && (
+            <TeamEntry
+              tournament={t}
+              slot={slot}
+              available={left.get(slot.id) ?? 0}
+              signedIn={signedIn}
+              started={started}
+              draft={team}
+              onDraft={(next) => {
+                hold.reset();
+                setTeamDraft(next);
+              }}
+            />
+          )}
           {counted.length > 0 && (
             <section className="space-y-3">
-              <h2 className="font-display text-xl font-semibold">Entry</h2>
+              <h2 className="font-display text-xl font-semibold">Watch</h2>
               {counted.map((type) => {
                 const available = left.get(type.id) ?? 0;
                 const quantity = quantities[type.id] ?? 0;
-                const max = type.kind === "competitor" ? 1 : Math.min(MAX_QUANTITY, available);
+                const max = Math.min(MAX_QUANTITY, available);
                 return (
                   <div key={type.id} className="panel flex flex-wrap items-center gap-4 p-4">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium">{type.name}</p>
                       <p className="text-sm text-muted">
-                        {type.kind === "competitor"
-                          ? `One slot for a team of ${t.team_size}`
-                          : "Standing, no assigned seat"}{" "}
-                        ·{" "}
+                        Standing, no assigned seat ·{" "}
                         <span className={available === 0 ? "text-danger" : available <= 5 ? "text-warn" : ""}>
                           {available === 0 ? "Sold out" : `${available} of ${type.capacity} left`}
                         </span>
@@ -241,6 +276,11 @@ export default function TournamentPage() {
               <p className="text-sm text-muted">Pick an entry or some seats to get started.</p>
             ) : (
               <ul className="space-y-1.5 text-sm">
+                {entering && slot && (
+                  <Line label={`Team entry: ${team.name.trim() || "your team"}`}>
+                    {money(slot.price_cents, t.currency)}
+                  </Line>
+                )}
                 {counted
                   .filter((type) => (quantities[type.id] ?? 0) > 0)
                   .map((type) => (
@@ -284,13 +324,16 @@ export default function TournamentPage() {
               </Notice>
             )}
 
+            {teamProblem && <Notice tone="warn">{teamProblem}</Notice>}
             {signedIn && t.waiting_room && queue.data && <QueuePanel status={queue.data} />}
 
             {signedIn ? (
               <button
                 type="button"
                 className="btn btn-primary w-full"
-                disabled={itemCount === 0 || hold.isPending || notOpen || closed || mustQueue}
+                disabled={
+                  itemCount === 0 || hold.isPending || notOpen || closed || mustQueue || teamProblem !== null
+                }
                 onClick={() => hold.mutate(idempotencyKey())}
               >
                 {hold.isPending ? "Holding" : "Hold for 10 minutes"}

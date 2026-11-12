@@ -153,7 +153,9 @@ The last transition matters. A payment can succeed after its hold has expired an
 
 ### 5.2 Team registration
 
-A captain submits a team name and roster. In one transaction: a competitor slot is claimed, the team and its members are created, and uniqueness is checked (a player cannot be on two teams in the same tournament). If any part fails, nothing is kept. If slots are full, the team may join the waitlist. When a slot frees up (a hold expires, a team withdraws), a worker offers it to the first waitlisted team as a hold with its own expiry.
+A captain submits a team name and roster. In one transaction: a competitor slot is claimed, the team and its members are created, and uniqueness is checked (a player cannot be on two teams in the same tournament). If any part fails, nothing is kept. The team is pending until its entry fee is paid through the normal checkout, and steps aside if the hold lapses or the payment fails.
+
+If slots are full, the team may join the waitlist. When a slot frees up (a hold expires, a team withdraws), a worker offers it to the first waitlisted team as a hold with its own, longer expiry. If that captain does not pay in time, or their roster no longer works, the offer moves to the next in line. Team entry closes when the tournament starts; spectator sales run until it ends.
 
 ### 5.3 Check-in
 
@@ -194,13 +196,16 @@ All write endpoints that create something accept `Idempotency-Key`. Lists use cu
 | `GET /tournaments/{slug}/availability` | Seat and slot availability (short cache) |
 | `GET /users/me/orders` | Order history |
 | `POST /tournaments/{slug}/queue` | Join the waiting room, receive a position, later an admission token |
-| `POST /holds` | Claim seats, a quantity, or a team slot |
+| `POST /holds` | Claim seats or standing tickets |
 | `DELETE /holds/{id}` | Release early |
 | `POST /orders` | Turn a hold into a pending order and start payment |
 | `GET /orders/{id}` | Order status and tickets |
 | `POST /webhooks/payments` | Payment provider callbacks |
-| `POST /tournaments/{slug}/teams` | Register a team (claims a slot) |
-| `POST /tournaments/{slug}/waitlist` | Join the waitlist |
+| `POST /tournaments/{slug}/teams` | Register a team: claims a slot (and any seats in the same basket) and returns the hold to check out |
+| `GET /tournaments/{slug}/teams` | Confirmed teams and rosters |
+| `DELETE /teams/{id}` | Captain withdraws; the slot goes to the waitlist |
+| `POST /tournaments/{slug}/waitlist` | Join the waitlist when slots are full |
+| `GET /tournaments/{slug}/waitlist/me` | Place in line, or the offered hold |
 | `GET /tournaments/{slug}/bracket` | Current bracket |
 | `WS /tournaments/{slug}/live` | Bracket and availability updates |
 | `POST /matches/{id}/result` | Organizer records a result |

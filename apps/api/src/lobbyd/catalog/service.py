@@ -527,8 +527,10 @@ class SaleInfo:
     status: str
     currency: str
     sales_open_at: datetime
+    starts_at: datetime
     ends_at: datetime
     waiting_room: bool
+    team_size: int
     ticket_types: dict[uuid.UUID, TicketTypeInfo]
 
 
@@ -550,8 +552,10 @@ async def get_sale_info(session: AsyncSession, slug: str) -> SaleInfo:
                 Tournament.status,
                 Tournament.currency,
                 Tournament.sales_open_at,
+                Tournament.starts_at,
                 Tournament.ends_at,
                 Tournament.waiting_room,
+                Tournament.team_size,
             ).where(Tournament.slug == slug, Tournament.status != "draft")
         )
     ).one_or_none()
@@ -572,8 +576,10 @@ async def get_sale_info(session: AsyncSession, slug: str) -> SaleInfo:
         status=tournament.status,
         currency=tournament.currency,
         sales_open_at=tournament.sales_open_at,
+        starts_at=tournament.starts_at,
         ends_at=tournament.ends_at,
         waiting_room=tournament.waiting_room,
+        team_size=tournament.team_size,
         ticket_types={row.id: TicketTypeInfo(*row) for row in ticket_types},
     )
     _sale_info.put(slug, info)

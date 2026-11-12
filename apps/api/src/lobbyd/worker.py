@@ -31,6 +31,7 @@ from lobbyd.platform.cache import create_redis, invalidate
 from lobbyd.platform.db import create_engine, create_sessionmaker
 from lobbyd.platform.events import EventContext
 from lobbyd.platform.logging import configure_logging
+from lobbyd.teams import service as teams
 from lobbyd.waitingroom import service as waitingroom
 from lobbyd.wiring import wire_modules
 
@@ -87,6 +88,12 @@ class _Housekeeping:
         await invalidate(ctx.redis, *closed)
         stale = len(closed)
         moved = await payment_flow.poll_unsettled(ctx.sessionmaker, ctx.provider, redis=ctx.redis)
+        # Teams whose slot hold lapsed step aside, and whoever is next on the
+        # waitlist is offered what that freed.
+        async with ctx.sessionmaker.begin() as session:
+            await teams.release_abandoned(session)
+        async with ctx.sessionmaker.begin() as session:
+            await teams.promote_waitlist(session, ctx.settings)
         if expired or freed or stale or moved:
             log.info(
                 "housekeeping",

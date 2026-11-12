@@ -211,6 +211,10 @@ async def create_hold(
     data: HoldCreate,
     admission_token: str | None = None,
     redis: Redis | None = None,
+    *,
+    team_slot: bool = False,
+    on_behalf_of_system: bool = False,
+    ttl_seconds: int | None = None,
 ) -> HoldOut:
     """Take everything asked for off sale for a few minutes, or nothing at all.
 
@@ -220,7 +224,9 @@ async def create_hold(
     info = await catalog.get_sale_info(session, data.tournament)
     now = await _now(session)
     _check_on_sale(info, now)
-    waitingroom.require_admission(settings, info, user_id, admission_token)
+    if not on_behalf_of_system:
+        # A waitlist offer is the system keeping a promise, not a buyer taking a turn.
+        waitingroom.require_admission(settings, info, user_id, admission_token)
 
     counted = []
     for item in sorted(data.items, key=lambda i: i.ticket_type_id):  # lock order
@@ -231,12 +237,21 @@ async def create_hold(
                 "unknown_ticket_type",
                 "items must name team slots or general admission for this tournament.",
             )
-        if ticket_type.kind == "competitor" and item.quantity != 1:
-            raise ProblemError(422, "invalid_quantity", "A team takes exactly one slot.")
+        if ticket_type.kind == "competitor":
+            if not team_slot:
+                # A team slot belongs to a team: it is claimed by registering
+                # one, which checks the roster in the same transaction.
+                raise ProblemError(
+                    422,
+                    "team_registration_required",
+                    "Team slots are claimed by registering a team, not held directly.",
+                )
+            if item.quantity != 1:
+                raise ProblemError(422, "invalid_quantity", "A team takes exactly one slot.")
         counted.append((ticket_type, item.quantity))
 
     # 1. Our own hold row.
-    hold = await _open_hold(session, settings, user_id, info, now)
+    hold = await _open_hold(session, user_id, info, now, ttl_seconds or settings.hold_ttl_seconds)
 
     # 2 and 3. Counted inventory.
     if counted:
@@ -296,7 +311,7 @@ async def create_hold(
 
 
 async def _open_hold(
-    session: AsyncSession, settings: Settings, user_id: uuid.UUID, info: SaleInfo, now: datetime
+    session: AsyncSession, user_id: uuid.UUID, info: SaleInfo, now: datetime, ttl_seconds: int
 ) -> Hold:
     hold = Hold(
         id=uuid7(),
@@ -304,7 +319,7 @@ async def _open_hold(
         tournament_id=info.tournament_id,
         currency=info.currency,
         status="active",
-        expires_at=now + timedelta(seconds=settings.hold_ttl_seconds),
+        expires_at=now + timedelta(seconds=ttl_seconds),
     )
     # The partial unique index allows one active hold per user per tournament.
     # Insert and let the index decide: no read first, and no savepoint to
@@ -790,3 +805,28 @@ async def queue_status(
     if info.status not in ("published", "live") or now >= info.ends_at:
         raise ProblemError(409, "sales_closed", "This tournament is no longer on sale.")
     return await waitingroom.join(redis, settings, info, user_id, now)
+
+
+# --- interface for the teams module -------------------------------------------
+
+
+async def counted_free(session: AsyncSession, ticket_type_id: uuid.UUID) -> int:
+    """How many of a counted ticket type are neither held nor sold right now."""
+    free = await session.scalar(
+        select(
+            InventoryCounter.capacity - InventoryCounter.held_count - InventoryCounter.sold_count
+        ).where(InventoryCounter.ticket_type_id == ticket_type_id)
+    )
+    return int(free or 0)
+
+
+async def return_sold(session: AsyncSession, ticket_type_id: uuid.UUID, quantity: int) -> None:
+    """Put sold counted inventory back on sale (a team withdrew)."""
+    await session.execute(
+        update(InventoryCounter)
+        .where(
+            InventoryCounter.ticket_type_id == ticket_type_id,
+            InventoryCounter.sold_count >= quantity,
+        )
+        .values(sold_count=InventoryCounter.sold_count - quantity)
+    )

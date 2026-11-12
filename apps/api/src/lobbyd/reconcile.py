@@ -73,7 +73,7 @@ STRICT = {
         SELECT o.id FROM orders o
         WHERE o.status = 'paid'
           AND (SELECT coalesce(sum(quantity), 0) FROM order_items WHERE order_id = o.id)
-           <> (SELECT count(*) FROM tickets WHERE order_id = o.id AND status = 'valid')
+           <> (SELECT count(*) FROM tickets WHERE order_id = o.id)
     """,
     "an order that is not paid has tickets": """
         SELECT o.id FROM orders o
@@ -94,6 +94,27 @@ STRICT = {
     "a paid order's hold was not checked out": """
         SELECT o.id FROM orders o JOIN holds h ON h.id = o.hold_id
         WHERE o.status = 'paid' AND h.status <> 'converted'
+    """,
+    "a team in the tournament has the wrong number of players": """
+        SELECT t.id FROM teams t JOIN tournaments tr ON tr.id = t.tournament_id
+        WHERE t.status <> 'withdrawn'
+          AND (SELECT count(*) FROM team_members m WHERE m.team_id = t.id) <> tr.team_size
+    """,
+    "a withdrawn team still has players registered": """
+        SELECT t.id FROM teams t
+        WHERE t.status = 'withdrawn'
+          AND EXISTS (SELECT 1 FROM team_members m WHERE m.team_id = t.id)
+    """,
+    "more teams are in a tournament than it has slots": """
+        SELECT c.ticket_type_id FROM inventory_counters c
+        JOIN ticket_types tt ON tt.id = c.ticket_type_id AND tt.kind = 'competitor'
+        -- A pending team whose hold has lapsed no longer has a slot: it is
+        -- withdrawn by the next housekeeping pass, so it does not count here.
+        WHERE (SELECT count(*) FROM teams t JOIN holds h ON h.id = t.hold_id
+               WHERE t.ticket_type_id = c.ticket_type_id
+                 AND (t.status = 'confirmed'
+                      OR (t.status = 'pending' AND h.status IN ('active', 'converted')))
+              ) > c.capacity
     """,
     "a user has more than one active hold for a tournament": """
         SELECT user_id, tournament_id FROM holds WHERE status = 'active'

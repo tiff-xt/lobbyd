@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # How long a hold keeps inventory off sale while the buyer checks out.
     hold_ttl_seconds: int = 10 * 60
 
+    # How long a captain has to take up a slot offered from the waitlist.
+    waitlist_offer_seconds: int = 30 * 60
+
     # Once checkout starts, the hold is extended so it cannot lapse mid-payment.
     payment_window_seconds: int = 5 * 60
 

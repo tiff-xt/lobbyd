@@ -624,6 +624,35 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "Roster": {
+        "properties": {
+          "name": {
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "roster": {
+            "description": "In-game names, one per player",
+            "items": {
+              "maxLength": 24,
+              "minLength": 2,
+              "pattern": "^[\\w .\\-]+$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Roster",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "roster"
+        ],
+        "title": "Roster",
+        "type": "object"
+      },
       "RowIn": {
         "properties": {
           "label": {
@@ -835,6 +864,133 @@
           "password"
         ],
         "title": "SignupRequest",
+        "type": "object"
+      },
+      "TeamCreate": {
+        "description": "Register a team: claims a slot now, confirmed when the entry fee is paid.\n\nSeats and standing tickets can be added to the same basket.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CountedItemIn"
+            },
+            "maxItems": 3,
+            "title": "Items",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "roster": {
+            "description": "In-game names, one per player",
+            "items": {
+              "maxLength": 24,
+              "minLength": 2,
+              "pattern": "^[\\w .\\-]+$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Roster",
+            "type": "array"
+          },
+          "seat_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Seat Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "roster"
+        ],
+        "title": "TeamCreate",
+        "type": "object"
+      },
+      "TeamOut": {
+        "properties": {
+          "captain_id": {
+            "format": "uuid",
+            "title": "Captain Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hold_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only shown to the captain: the hold that pays for the entry",
+            "title": "Hold Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "roster": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roster",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tournament_id",
+          "name",
+          "status",
+          "captain_id",
+          "roster",
+          "created_at"
+        ],
+        "title": "TeamOut",
+        "type": "object"
+      },
+      "TeamRegistration": {
+        "properties": {
+          "hold": {
+            "$ref": "#/components/schemas/HoldOut",
+            "description": "Check this out to confirm the team"
+          },
+          "team": {
+            "$ref": "#/components/schemas/TeamOut"
+          }
+        },
+        "required": [
+          "team",
+          "hold"
+        ],
+        "title": "TeamRegistration",
         "type": "object"
       },
       "TicketOut": {
@@ -1589,6 +1745,89 @@
         ],
         "title": "VenueSummary",
         "type": "object"
+      },
+      "WaitlistOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "offered_hold_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When a slot has been offered: the hold to check out before it lapses",
+            "title": "Offered Hold Id"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 means next in line. Null once no longer waiting",
+            "title": "Position"
+          },
+          "roster": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roster",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tournament_id",
+          "name",
+          "roster",
+          "status",
+          "position",
+          "note",
+          "offered_hold_id",
+          "created_at"
+        ],
+        "title": "WaitlistOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -2153,6 +2392,48 @@
         ]
       }
     },
+    "/teams/{team_id}": {
+      "delete": {
+        "description": "Frees the slot for the waitlist. The entry fee is not refunded automatically.",
+        "operationId": "withdraw_team_teams__team_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw a team",
+        "tags": [
+          "teams"
+        ]
+      }
+    },
     "/tournaments": {
       "get": {
         "description": "Soonest first. Without `from`, tournaments that have already ended are left out. `q` understands quoted phrases, `or`, and `-word` to exclude.",
@@ -2569,6 +2850,142 @@
         ]
       }
     },
+    "/tournaments/{slug}/teams": {
+      "get": {
+        "operationId": "list_teams_tournaments__slug__teams_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TeamOut"
+                  },
+                  "title": "Response List Teams Tournaments  Slug  Teams Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "summary": "Teams confirmed for a tournament",
+        "tags": [
+          "teams"
+        ]
+      },
+      "post": {
+        "description": "Claims a team slot and records the roster, together or not at all. The team is `pending` until the returned hold is checked out. Retry safely with the same Idempotency-Key.",
+        "operationId": "register_team_tournaments__slug__teams_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admission-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admission-Token"
+            }
+          },
+          {
+            "description": "A random value (a UUID is ideal) generated once per intended action and sent again unchanged on every retry of it.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A random value (a UUID is ideal) generated once per intended action and sent again unchanged on every retry of it.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamRegistration"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register a team",
+        "tags": [
+          "teams"
+        ]
+      }
+    },
     "/tournaments/{slug}/ticket-types": {
       "post": {
         "operationId": "add_ticket_type_tournaments__slug__ticket_types_post",
@@ -2676,6 +3093,149 @@
         ]
       }
     },
+    "/tournaments/{slug}/waitlist": {
+      "post": {
+        "operationId": "join_waitlist_tournaments__slug__waitlist_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Roster"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Join the waitlist when team slots are full",
+        "tags": [
+          "teams"
+        ]
+      }
+    },
+    "/tournaments/{slug}/waitlist/me": {
+      "delete": {
+        "operationId": "leave_waitlist_tournaments__slug__waitlist_me_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Leave the waitlist",
+        "tags": [
+          "teams"
+        ]
+      },
+      "get": {
+        "description": "When a slot is offered, `offered_hold_id` is the hold to check out.",
+        "operationId": "my_waitlist_entry_tournaments__slug__waitlist_me_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My place on the waitlist",
+        "tags": [
+          "teams"
+        ]
+      }
+    },
     "/users/me": {
       "get": {
         "operationId": "me_users_me_get",
@@ -2749,6 +3309,46 @@
         "summary": "My orders, newest first",
         "tags": [
           "booking"
+        ]
+      }
+    },
+    "/users/me/teams": {
+      "get": {
+        "operationId": "list_my_teams_users_me_teams_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TeamOut"
+                  },
+                  "title": "Response List My Teams Users Me Teams Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Teams I captain",
+        "tags": [
+          "teams"
         ]
       }
     },

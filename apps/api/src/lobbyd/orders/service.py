@@ -27,7 +27,9 @@ from lobbyd.orders.schemas import OrderItemOut, OrderOut, PaymentOut
 from lobbyd.payments import service as payments
 from lobbyd.payments.service import Transition
 from lobbyd.platform import outbox
+from lobbyd.platform.cache import invalidate
 from lobbyd.platform.errors import ProblemError
+from lobbyd.platform.events import EventContext
 from lobbyd.platform.ids import uuid7
 from lobbyd.tickets import service as tickets
 from lobbyd.tickets.service import TicketLine
@@ -113,6 +115,7 @@ async def _lock(session: AsyncSession, order_id: uuid.UUID) -> Order:
 def _event(order: Order) -> dict[str, Any]:
     return {
         "order_id": str(order.id),
+        "hold_id": str(order.hold_id),
         "user_id": str(order.user_id),
         "total_cents": order.total_cents,
         "currency": order.currency,
@@ -301,3 +304,27 @@ async def _orders(session: AsyncSession, *where: ColumnElement[bool]) -> list[Or
         )
         for order in orders
     ]
+
+
+# --- event handlers -------------------------------------------------------------
+
+
+async def handle_team_withdrawn(ctx: EventContext, payload: dict[str, Any]) -> None:
+    """A confirmed team gave up its slot: cancel its entry ticket and put the slot back on sale.
+
+    Safe to run twice: the ticket is only voided once, and the slot is only
+    returned for a ticket this call voided.
+    """
+    hold_id = uuid.UUID(payload["hold_id"])
+    ticket_type_id = uuid.UUID(payload["ticket_type_id"])
+    async with ctx.sessionmaker.begin() as session:
+        order = await session.scalar(
+            select(Order).where(Order.hold_id == hold_id).with_for_update()
+        )
+        if order is None or order.status != "paid":
+            return
+        voided = await tickets.void(session, order.id, ticket_type_id)
+        if voided:
+            await inventory.return_sold(session, ticket_type_id, voided)
+        key = cache_key(order.user_id, order.id)
+    await invalidate(ctx.redis, key)

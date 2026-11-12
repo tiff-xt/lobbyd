@@ -20,6 +20,7 @@ KINDS = {
     "order.cancelled": "payment_failed",
     "order.expired": "order_expired",
     "order.refunded": "refund_notice",
+    "waitlist.offered": "waitlist_offer",
 }
 
 
@@ -31,7 +32,8 @@ async def _notify(ctx: EventContext, kind: str, payload: dict[str, Any]) -> None
                 id=uuid7(),
                 user_id=uuid.UUID(payload["user_id"]),
                 kind=kind,
-                subject_id=uuid.UUID(payload["order_id"]),
+                # What the message is about: an order, or a waitlist entry.
+                subject_id=uuid.UUID(payload.get("subject_id") or payload["order_id"]),
                 payload=payload,
             )
             .on_conflict_do_nothing()
@@ -41,7 +43,9 @@ async def _notify(ctx: EventContext, kind: str, payload: dict[str, Any]) -> None
             return  # this event was already handled
         # A real mail call would go here, inside the transaction: if sending
         # fails, the row is rolled back and the retry sends it.
-        log.info("email_sent", kind=kind, order_id=payload["order_id"])
+        log.info(
+            "email_sent", kind=kind, subject_id=payload.get("subject_id") or payload["order_id"]
+        )
 
 
 def handler_for(topic: str) -> Any:

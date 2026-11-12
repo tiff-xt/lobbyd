@@ -326,9 +326,10 @@ async def test_what_can_be_held(
         422,
         "unknown_ticket_type",
     )
-    assert await attempt(items=[{"ticket_type_id": sale.team, "quantity": 2}]) == (
+    # A team slot is claimed by registering a team, never as a plain ticket.
+    assert await attempt(items=[{"ticket_type_id": sale.team, "quantity": 1}]) == (
         422,
-        "invalid_quantity",
+        "team_registration_required",
     )
     missing = await client.post(
         "/holds",

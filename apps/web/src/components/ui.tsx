@@ -34,6 +34,7 @@ export function Notice({
 
 const STATUS_TONE: Record<string, string> = {
   paid: "border-ok/40 bg-ok/10 text-ok",
+  confirmed: "border-ok/40 bg-ok/10 text-ok",
   pending: "border-warn/40 bg-warn/10 text-warn",
   cancelled: "border-danger/40 bg-danger/10 text-danger",
   expired: "border-line bg-panel-2 text-muted",

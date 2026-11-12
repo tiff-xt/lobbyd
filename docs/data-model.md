@@ -327,44 +327,57 @@ CREATE TABLE notifications (
 
 ```sql
 CREATE TABLE teams (
-    id            uuid PRIMARY KEY,
-    tournament_id uuid NOT NULL REFERENCES tournaments,
-    captain_id    uuid NOT NULL REFERENCES users,
-    name          text NOT NULL,
-    status        text NOT NULL DEFAULT 'pending'
-                  CHECK (status IN ('pending', 'confirmed', 'withdrawn')),
-    created_at    timestamptz NOT NULL DEFAULT now(),
+    id             uuid PRIMARY KEY,
+    tournament_id  uuid NOT NULL REFERENCES tournaments,
+    captain_id     uuid NOT NULL REFERENCES users,
+    name           citext NOT NULL,                -- compared without regard to case
+    status         text NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending', 'confirmed', 'withdrawn')),
+    ticket_type_id uuid NOT NULL REFERENCES ticket_types,
+    hold_id        uuid NOT NULL REFERENCES holds, -- the hold that claimed the slot
+    created_at     timestamptz NOT NULL DEFAULT now(),
     UNIQUE (id, tournament_id)                     -- target for the composite key below
 );
-CREATE UNIQUE INDEX teams_name_idx ON teams (tournament_id, lower(name)) WHERE status <> 'withdrawn';
+-- Among teams still in the tournament: one per name, one per captain.
+CREATE UNIQUE INDEX teams_name_idx    ON teams (tournament_id, name)       WHERE status <> 'withdrawn';
+CREATE UNIQUE INDEX teams_captain_idx ON teams (tournament_id, captain_id) WHERE status <> 'withdrawn';
+CREATE UNIQUE INDEX teams_hold_id_idx ON teams (hold_id);
 
 CREATE TABLE team_members (
     team_id       uuid NOT NULL,
-    tournament_id uuid NOT NULL,                   -- denormalised for the unique index below
-    handle        text NOT NULL,                   -- in-game name
-    user_id       uuid REFERENCES users,           -- optional link to an account
+    tournament_id uuid NOT NULL,                   -- copied from the team, for the rule below
+    handle        citext NOT NULL,                 -- in-game name
+    position      integer NOT NULL,                -- order on the roster as entered
     PRIMARY KEY (team_id, handle),
     -- Guarantees the copied tournament_id always matches the team's.
-    FOREIGN KEY (team_id, tournament_id) REFERENCES teams (id, tournament_id) ON DELETE CASCADE
+    FOREIGN KEY (team_id, tournament_id) REFERENCES teams (id, tournament_id) ON DELETE CASCADE,
+    -- A player competes for one team per tournament.
+    UNIQUE (tournament_id, handle)
 );
--- A player competes for one team per tournament.
-CREATE UNIQUE INDEX team_members_one_team_idx ON team_members (tournament_id, lower(handle));
 -- When a team withdraws its member rows are removed, which frees those players to join another team.
 
 CREATE TABLE waitlist_entries (
-    id            uuid PRIMARY KEY,
+    id            uuid PRIMARY KEY,                -- time-ordered, so id order is arrival order
     tournament_id uuid NOT NULL REFERENCES tournaments,
     captain_id    uuid NOT NULL REFERENCES users,
-    roster        jsonb NOT NULL,                  -- proposed team, validated on promotion
+    name          text NOT NULL,
+    roster        jsonb NOT NULL,                  -- proposed team, checked when a slot is offered
     status        text NOT NULL DEFAULT 'waiting'
                   CHECK (status IN ('waiting', 'offered', 'accepted', 'lapsed', 'left')),
-    offered_hold_id uuid REFERENCES holds,
-    created_at    timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (tournament_id, captain_id)
+    note          text,                            -- why an entry lapsed, in words for the captain
+    team_id       uuid REFERENCES teams,           -- the team created by the offer
+    created_at    timestamptz NOT NULL DEFAULT now()
 );
+-- One live entry per captain per tournament. Old ones stay as history.
+CREATE UNIQUE INDEX waitlist_one_live_idx ON waitlist_entries (tournament_id, captain_id)
+    WHERE status IN ('waiting', 'offered');
 -- "Who is next?" in arrival order.
-CREATE INDEX waitlist_next_idx ON waitlist_entries (tournament_id, created_at) WHERE status = 'waiting';
+CREATE INDEX waitlist_next_idx ON waitlist_entries (tournament_id, id) WHERE status = 'waiting';
 ```
+
+A team slot is counted inventory like a standing ticket, claimed through the same hold. What makes it a team is that the claim, the team row, and the roster rows are written in one transaction: a taken name or a player who is already on another team rolls the slot claim back too. The team is `pending` until the order for its hold is paid, and `withdrawn` if that hold lapses or the payment fails.
+
+A waitlist offer is a registration made on the captain's behalf with a longer hold (an hour by default, against ten minutes for a basket). The promoter takes entries in arrival order with `FOR UPDATE SKIP LOCKED`, so two workers never offer the same entry twice. The roster is only checked at that point, because who is free to play can change while a team waits. An entry that can no longer be registered lapses with the reason, and the slot goes to the next captain in the same pass.
 
 ## Check-in
 
@@ -434,7 +447,7 @@ Both tables grow without bound and are pruned by a scheduled job (idempotency ke
 
 ## Invariants
 
-Twenty-one checks, each a query that returns the rows breaking a rule, live in [`reconcile.py`](../apps/api/src/lobbyd/reconcile.py). The tests run them after every concurrency test. The worker runs them every five minutes and logs an error if any returns a row.
+Twenty-four checks, each a query that returns the rows breaking a rule, live in [`reconcile.py`](../apps/api/src/lobbyd/reconcile.py). The tests run them after every concurrency test. The worker runs them every five minutes and logs an error if any returns a row.
 
 **Always true** (between any two transactions):
 
@@ -444,21 +457,22 @@ Twenty-one checks, each a query that returns the rows breaking a rule, live in [
 4. Every sold seat has a valid ticket, and every valid seated ticket is for a sold seat.
 5. No held seat belongs to a hold that was checked out or released.
 6. Every active hold that is still in time owns all of its seats.
-7. Every paid order has exactly the tickets it bought, and no unpaid order has any.
+7. Every paid order has exactly the tickets it bought (valid, or void if its team withdrew), and no unpaid order has any.
 8. Every order's total equals its items, and its payment is for that amount.
 9. Every checked-out hold belongs to exactly one paid order, and every paid order's hold is checked out. *(one order per hold is a constraint)*
 10. Every paid order that cost money has a succeeded payment.
 11. No user has two active holds for one tournament. *(constraint)*
 12. No provider event id is recorded twice, and no order has two payments. *(constraints)*
+13. No name, captain, or player appears on two teams still in one tournament. *(constraints)*
+14. Every team still in a tournament has exactly as many players as the format asks for, and a withdrawn team has none.
+15. No tournament has more teams holding or owning a slot than it has slots.
 
 **True once background work has caught up** (reported only when a row has been wrong for 15 minutes):
 
-13. Nobody has been charged for an order that is not paid, unless a refund is under way.
-14. No order is pending on a hold that has closed.
-15. No payment or refund is still waiting on the provider.
-16. No event is sitting unpublished in the outbox.
-17. Every paid order has a confirmation.
+16. Nobody has been charged for an order that is not paid, unless a refund is under way.
+17. No order is pending on a hold that has closed.
+18. No payment or refund is still waiting on the provider.
+19. No event is sitting unpublished in the outbox.
+20. Every paid order has a confirmation.
 
 Rules marked as constraints cannot be broken by any code path. The others span tables, so they are upheld by doing the work in one transaction and verified by these checks.
-
-Planned: no handle appears on two teams in one tournament *(constraint, phase 6)*.

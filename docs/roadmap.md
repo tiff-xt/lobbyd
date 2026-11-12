@@ -10,7 +10,7 @@ Each phase ends with something that runs and is tested. A phase is done when its
 | 3 | Booking core | Done |
 | 4 | Payments and reliability | Done |
 | 5 | Performance under load | Done |
-| 6 | Teams and waitlist | Not started |
+| 6 | Teams and waitlist | Done |
 | 7 | Check-in and live brackets | Not started |
 | 8 | Observability and deployment | Not started |
 | 9 | Demo client | Done (ahead of order; the waiting room and brackets screens follow their phases) |
@@ -54,6 +54,8 @@ Caching for catalog and availability with stampede protection, rate limiting, wa
 Team registration as an atomic claim, roster rules, withdrawal, waitlist with offers that expire, promotion worker.
 
 **Done when:** concurrent registrations for the last slot produce exactly one team; a freed slot is offered to the next waiting captain and moves on if they do not take it.
+
+**Outcome:** fifty captains racing for three slots produce three teams and no stray rows; twelve racing for one name, or listing one player, produce one team. Six promoters running at once make one offer, to whoever has waited longest. A team entry is a hold like any other, so it reuses checkout, payment faults, and expiry unchanged.
 
 ## Phase 7. Check-in and live brackets
 

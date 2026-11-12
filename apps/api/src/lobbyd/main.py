@@ -23,6 +23,7 @@ from lobbyd.platform.errors import (
     use_problem_media_type,
 )
 from lobbyd.platform.logging import RequestContextMiddleware, configure_logging
+from lobbyd.teams.router import router as teams_router
 from lobbyd.wiring import wire_modules
 
 
@@ -72,6 +73,7 @@ def create_app(
     app.include_router(catalog_router)
     app.include_router(inventory_router)
     app.include_router(orders_router)
+    app.include_router(teams_router)
     return app
 
 
