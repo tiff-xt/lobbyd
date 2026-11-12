@@ -22,6 +22,9 @@
       "cache": true,
       "outputs": [
         "{projectRoot}/.next"
+      ],
+      "dependsOn": [
+        "typecheck"
       ]
     },
     "lint": {
