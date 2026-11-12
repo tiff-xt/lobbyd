@@ -285,8 +285,26 @@ async def get_door_summary(api: Api, args: Slug) -> Outcome:
 
 
 async def withdraw_team(api: Api, args: TeamId) -> Outcome:
+    _, teams = await api.get("/users/me/teams")
+    team: dict[str, Any] = next((t for t in teams or [] if t.get("id") == str(args.team_id)), {})
     status, body = await api.delete(f"/teams/{args.team_id}")
-    return _result(status, body or {"withdrawn": True})
+    if status >= 300:
+        return _result(status, body)
+    # Say what follows from it, so the model does not have to guess.
+    paid = team.get("status") == "confirmed"
+    return Outcome(
+        True,
+        {
+            "withdrawn": True,
+            "team": team.get("name"),
+            "entry_fee": (
+                "A paid entry fee is refunded automatically. It shows on the order as "
+                "refunded_cents within a few seconds."
+                if paid
+                else "The entry fee had not been paid, so there is nothing to refund."
+            ),
+        },
+    )
 
 
 async def release_hold(api: Api, args: HoldId) -> Outcome:

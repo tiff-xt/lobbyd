@@ -45,6 +45,17 @@ services:
         value: "true"
       - key: LOBBYD_WORKER_METRICS_PORT
         value: "0"
+      # The assistant. Leave the key empty and it is simply switched off.
+      # A free Gemini key comes from Google AI Studio (docs/deploy.md).
+      - key: LOBBYD_ASSISTANT_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai
+      - key: LOBBYD_ASSISTANT_MODEL
+        value: gemini-3.5-flash-lite
+      - key: LOBBYD_ASSISTANT_API_KEY
+        sync: false
+      # Well inside the free quota, so a busy day ends in "try later", not a bill.
+      - key: LOBBYD_ASSISTANT_DAILY_TURNS
+        value: "150"
 
   - type: keyvalue
     name: lobbyd-redis

@@ -58,6 +58,16 @@ Use the direct string, not the pooled one: the pooler runs in transaction mode, 
 
 These passwords are public on purpose. The demo holds no real data and erases itself.
 
+## Switching the assistant on
+
+Optional. Without it the assistant page says it is off and everything else works.
+
+1. Create a free API key at Google AI Studio (aistudio.google.com, **Get API key**). No card is needed.
+2. In Render, open the `lobbyd-api` service, **Environment**, and set `LOBBYD_ASSISTANT_API_KEY` to that key. The base URL and model are already set by the blueprint; on a service created before they were added, also set `LOBBYD_ASSISTANT_BASE_URL` to `https://generativelanguage.googleapis.com/v1beta/openai` and `LOBBYD_ASSISTANT_MODEL` to `gemini-3.5-flash-lite`.
+3. Save. Render redeploys, and the Assistant page starts answering.
+
+The free quota is small. A daily ceiling (`LOBBYD_ASSISTANT_DAILY_TURNS`, 150) keeps the demo inside it; past that the assistant says it is busy until tomorrow.
+
 ## After it is up
 
 - Put the Vercel address at the top of the README.

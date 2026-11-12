@@ -33,6 +33,7 @@ const TOOL_LABEL: Record<string, string> = {
 
 const FAILURE: Record<string, string> = {
   model_unavailable: "The language model did not answer. Try again in a moment.",
+  model_busy: "The language model is at its free limit for now. Try again later.",
   internal_error: "Something went wrong on our side. Nothing was changed.",
   action_not_pending: "That change was already decided.",
 };

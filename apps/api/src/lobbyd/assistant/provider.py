@@ -22,6 +22,10 @@ class ToolCall:
     arguments: dict[str, Any]
     # Set when the model's arguments were not valid JSON: the loop tells it so.
     malformed: str | None = None
+    # Anything else the provider attached to the call. Not ours to interpret,
+    # but some providers require it back on the next request (Gemini signs
+    # its tool calls and refuses a conversation that drops the signature).
+    extra: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -34,6 +38,10 @@ class ModelTurn:
 
 class ModelError(Exception):
     """The provider could not be reached, refused, or answered nonsense."""
+
+    def __init__(self, reason: str, *, rate_limited: bool = False) -> None:
+        super().__init__(reason)
+        self.rate_limited = rate_limited
 
 
 class Provider(Protocol):
@@ -80,7 +88,8 @@ class ChatCompletionsProvider:
             data = response.json()
             message = data["choices"][0]["message"]
         except httpx.HTTPStatusError as exc:
-            raise ModelError(f"provider answered {exc.response.status_code}") from exc
+            status = exc.response.status_code
+            raise ModelError(f"provider answered {status}", rate_limited=status == 429) from exc
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             raise ModelError(type(exc).__name__) from exc
 
@@ -104,6 +113,8 @@ class ChatCompletionsProvider:
                     name=str(function.get("name") or ""),
                     arguments=arguments,
                     malformed=malformed,
+                    extra={k: v for k, v in call.items() if k not in ("id", "type", "function")}
+                    or None,
                 )
             )
         usage = data.get("usage") or {}
@@ -151,5 +162,10 @@ class ScriptedProvider:
 
 def from_settings(settings: Settings) -> Provider | None:
     if not (settings.assistant_base_url and settings.assistant_model):
+        return None
+    # A hosted provider with no key would fail every request. Treat that as
+    # "not set up yet", so the page says the assistant is off instead of broken.
+    local = any(host in settings.assistant_base_url for host in ("localhost", "127.0.0.1"))
+    if not settings.assistant_api_key.get_secret_value() and not local:
         return None
     return ChatCompletionsProvider(settings)

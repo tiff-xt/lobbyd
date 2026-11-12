@@ -13,9 +13,11 @@ from typing import Any
 
 from fastapi import FastAPI
 from httpx import AsyncClient
+from pydantic import SecretStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from lobbyd.assistant import provider
 from lobbyd.assistant.agent import unverified_amounts
 from lobbyd.assistant.provider import ModelError, ModelTurn, ScriptedProvider, ToolCall
 from lobbyd.config import Settings
@@ -469,3 +471,12 @@ async def test_the_model_being_down_is_an_error_not_a_crash(
     _, events = await ask(client, buyer, "hello again", conversation)
     assert final(events)["text"] == "Back."
     assert (await client.get("/tournaments")).status_code == 200
+
+
+def test_a_hosted_model_without_a_key_counts_as_switched_off() -> None:
+    hosted = {"assistant_base_url": "https://models.example.com/v1", "assistant_model": "m"}
+    assert provider.from_settings(Settings(**hosted)) is None  # type: ignore[arg-type]
+    assert provider.from_settings(Settings(**hosted, assistant_api_key=SecretStr("k"))) is not None  # type: ignore[arg-type]
+    local = {"assistant_base_url": "http://localhost:11434/v1", "assistant_model": "m"}
+    assert provider.from_settings(Settings(**local)) is not None  # type: ignore[arg-type]
+    assert provider.from_settings(Settings()) is None

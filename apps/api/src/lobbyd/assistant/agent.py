@@ -134,6 +134,9 @@ async def _history(session: AsyncSession, conversation_id: uuid.UUID) -> list[di
             if row.tool_calls:
                 entry["tool_calls"] = [
                     {
+                        # Whatever else the provider sent with the call goes
+                        # back to it untouched.
+                        **(call.get("extra") or {}),
                         "id": call["id"],
                         "type": "function",
                         "function": {
@@ -264,7 +267,10 @@ async def run_turn(ctx: Context, conversation_id: uuid.UUID) -> AsyncIterator[Ev
         except ModelError as exc:
             metrics.ASSISTANT_TURNS.labels("model_error").inc()
             log.warning("assistant_model_error", error=str(exc))
-            yield {"type": "error", "code": "model_unavailable"}
+            yield {
+                "type": "error",
+                "code": "model_busy" if exc.rate_limited else "model_unavailable",
+            }
             return
         elapsed = round((time.perf_counter() - started) * 1000)
         metrics.ASSISTANT_MODEL_SECONDS.observe(elapsed / 1000)
@@ -319,7 +325,12 @@ async def run_turn(ctx: Context, conversation_id: uuid.UUID) -> AsyncIterator[Ev
 
         correction = None
         calls = [
-            {"id": call.id, "name": call.name, "arguments": call.arguments}
+            {
+                "id": call.id,
+                "name": call.name,
+                "arguments": call.arguments,
+                **({"extra": call.extra} if call.extra else {}),
+            }
             for call in turn.tool_calls
         ]
         async with ctx.sessionmaker.begin() as session:
@@ -331,7 +342,13 @@ async def run_turn(ctx: Context, conversation_id: uuid.UUID) -> AsyncIterator[Ev
                 tool_calls=calls,
                 meta=meta,
             )
-        yield {"type": "assistant", "text": turn.text, "tool_calls": calls}
+        yield {
+            "type": "assistant",
+            "text": turn.text,
+            "tool_calls": [
+                {"id": c["id"], "name": c["name"], "arguments": c["arguments"]} for c in calls
+            ],
+        }
 
         # Sort the requests: refused outright, safe to run now, or needing a person.
         results: dict[str, tuple[Outcome, int]] = {}
