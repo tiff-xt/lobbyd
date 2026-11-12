@@ -1,0 +1,107 @@
+{
+  "scenario": "rush-redis_lock",
+  "users": 1000,
+  "seconds": 35,
+  "api_workers": 3,
+  "settings": {
+    "LOBBYD_CLAIM_STRATEGY": "redis_lock"
+  },
+  "requests": {
+    "GET availability": {
+      "count": 10509,
+      "failures": 0,
+      "p50_ms": 3.0,
+      "p95_ms": 570.0,
+      "p99_ms": 2600.0,
+      "per_second": 308.1
+    },
+    "GET order": {
+      "count": 483,
+      "failures": 1,
+      "p50_ms": 130.0,
+      "p95_ms": 2600.0,
+      "p99_ms": 4300.0,
+      "per_second": 14.2
+    },
+    "GET seat map": {
+      "count": 1000,
+      "failures": 0,
+      "p50_ms": 180.0,
+      "p95_ms": 320.0,
+      "p99_ms": 340.0,
+      "per_second": 29.3
+    },
+    "GET tournament": {
+      "count": 1000,
+      "failures": 0,
+      "p50_ms": 1200.0,
+      "p95_ms": 3300.0,
+      "p99_ms": 3600.0,
+      "per_second": 29.3
+    },
+    "POST holds": {
+      "count": 2084,
+      "failures": 51,
+      "p50_ms": 1200.0,
+      "p95_ms": 4700.0,
+      "p99_ms": 5500.0,
+      "per_second": 61.1
+    },
+    "POST orders": {
+      "count": 109,
+      "failures": 13,
+      "p50_ms": 2500.0,
+      "p95_ms": 5200.0,
+      "p99_ms": 5300.0,
+      "per_second": 3.2
+    },
+    "POST queue": {
+      "count": 1000,
+      "failures": 61,
+      "p50_ms": 1400.0,
+      "p95_ms": 5200.0,
+      "p99_ms": 5500.0,
+      "per_second": 29.3
+    },
+    "page open to seats held": {
+      "count": 109,
+      "failures": 0,
+      "p50_ms": 2600.0,
+      "p95_ms": 7400.0,
+      "p99_ms": 7700.0,
+      "per_second": 3.2
+    },
+    "page open to tickets": {
+      "count": 96,
+      "failures": 0,
+      "p50_ms": 15000.0,
+      "p95_ms": 17000.0,
+      "p99_ms": 18000.0,
+      "per_second": 2.8
+    },
+    "Aggregated": {
+      "count": 16390,
+      "failures": 126,
+      "p50_ms": 91.0,
+      "p95_ms": 3100.0,
+      "p99_ms": 5300.0,
+      "per_second": 480.6
+    }
+  },
+  "outcomes": {
+    "hold won": 109,
+    "hold refused": 1924,
+    "nothing left to pick": 826,
+    "hold error 503": 51,
+    "order paid": 96,
+    "order error 503": 13,
+    "gave up": 65
+  },
+  "seats_sold": 192,
+  "seats_total": 250,
+  "orders_paid": 96,
+  "tickets": 192,
+  "deadlocks": 0,
+  "server_errors_logged": 0,
+  "invariants_broken": {}
+}

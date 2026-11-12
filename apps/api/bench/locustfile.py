@@ -26,6 +26,9 @@ from locust import FastHttpUser, between, events, task
 STATE = json.load(open(os.environ.get("BENCH_STATE", "bench/.state.json")))
 SLUG = STATE["slug"]
 ROWS = STATE["rows"]
+# How many seats each buyer wants: "2" or a range like "2-4".
+_group = os.environ.get("BENCH_GROUP", "2").split("-")
+GROUP = (int(_group[0]), int(_group[-1]))
 _next_buyer = count()
 outcomes: Counter[str] = Counter()
 
@@ -63,12 +66,17 @@ class Buyer(FastHttpUser):
                 response.failure(f"status {response.status_code}")
 
     def _pick(self) -> list[str] | None:
+        """A run of neighbouring seats that look free, in no particular order."""
+        size = random.randint(*GROUP)
         for _ in range(40):
             row = random.choice(ROWS)
-            at = random.randrange(len(row) - 1)
-            pair = row[at : at + 2]
-            if not self.taken.intersection(pair):
-                return pair
+            at = random.randrange(len(row) - size + 1)
+            seats = row[at : at + size]
+            if not self.taken.intersection(seats):
+                # People click seats in any order. Sending them sorted would
+                # hide lock-ordering problems in the server.
+                random.shuffle(seats)
+                return seats
         return None
 
     def _admission(self) -> str | None:
@@ -81,16 +89,18 @@ class Buyer(FastHttpUser):
                 name="POST queue",
                 catch_response=True,
             ) as response:
-                if response.status_code != 200:
+                status = response.json() if response.status_code == 200 else None
+                if status is None:
                     response.failure(f"status {response.status_code}")
-                    return None
-                status = response.json()
+            if status is None:
+                time.sleep(2)  # the server said it was busy: ask again, do not give up our place
+                continue
             if status["status"] == "not_required":
                 return None
             if status["status"] == "admitted":
                 _report("time in waiting room", started)
                 return str(status["admission_token"])
-            time.sleep(1)
+            time.sleep(1.5)
 
     @task
     def shop(self) -> None:

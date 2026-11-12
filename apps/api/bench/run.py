@@ -39,14 +39,18 @@ SCENARIOS: dict[str, tuple[list[str], dict[str, str], int, int, int]] = {
         150,
         75,
     ),
-    # Everyone at once on very few seats: the claim path under maximum contention.
+    # The same sale at a pace this machine can serve: what latency looks
+    # like when the system is not overloaded.
+    "steady": (["--seats", "2000", "--buyers", "400"], {}, 400, 15, 60),
+    # Everyone at once on very few seats, each wanting two to four of them,
+    # clicked in any order: the claim path under maximum contention.
     **{
         f"rush-{strategy}": (
-            ["--seats", "250", "--buyers", "1000"],
-            {"LOBBYD_CLAIM_STRATEGY": strategy},
-            1000,
+            ["--seats", "250", "--buyers", "500"],
+            {"LOBBYD_CLAIM_STRATEGY": strategy, "BENCH_GROUP": "2-4"},
             500,
-            35,
+            500,
+            30,
         )
         for strategy in ("lock_then_claim", "claim_only", "skip_locked", "redis_lock")
     },

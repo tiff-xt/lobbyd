@@ -6,99 +6,99 @@
   "settings": {},
   "requests": {
     "GET availability": {
-      "count": 24172,
-      "failures": 1,
+      "count": 24586,
+      "failures": 0,
       "p50_ms": 5.0,
-      "p95_ms": 500.0,
-      "p99_ms": 4400.0,
-      "per_second": 320.7
+      "p95_ms": 530.0,
+      "p99_ms": 2700.0,
+      "per_second": 325.6
     },
     "GET order": {
-      "count": 7173,
-      "failures": 167,
-      "p50_ms": 40.0,
-      "p95_ms": 3600.0,
+      "count": 7853,
+      "failures": 191,
+      "p50_ms": 27.0,
+      "p95_ms": 3200.0,
       "p99_ms": 5300.0,
-      "per_second": 95.2
+      "per_second": 104.0
     },
     "GET seat map": {
       "count": 1500,
       "failures": 0,
-      "p50_ms": 230.0,
-      "p95_ms": 3200.0,
-      "p99_ms": 3300.0,
+      "p50_ms": 250.0,
+      "p95_ms": 2700.0,
+      "p99_ms": 2800.0,
       "per_second": 19.9
     },
     "GET tournament": {
       "count": 1500,
       "failures": 0,
-      "p50_ms": 920.0,
-      "p95_ms": 2800.0,
-      "p99_ms": 3300.0,
+      "p50_ms": 1100.0,
+      "p95_ms": 2500.0,
+      "p99_ms": 2900.0,
       "per_second": 19.9
     },
     "POST holds": {
-      "count": 2619,
-      "failures": 460,
-      "p50_ms": 2400.0,
-      "p95_ms": 5500.0,
-      "p99_ms": 6000.0,
-      "per_second": 34.7
+      "count": 2533,
+      "failures": 297,
+      "p50_ms": 2100.0,
+      "p95_ms": 5400.0,
+      "p99_ms": 6300.0,
+      "per_second": 33.5
     },
     "POST orders": {
-      "count": 847,
-      "failures": 174,
-      "p50_ms": 2200.0,
+      "count": 855,
+      "failures": 119,
+      "p50_ms": 2000.0,
       "p95_ms": 5300.0,
-      "p99_ms": 5700.0,
-      "per_second": 11.2
+      "p99_ms": 5600.0,
+      "per_second": 11.3
     },
     "POST queue": {
       "count": 1500,
-      "failures": 277,
-      "p50_ms": 2300.0,
-      "p95_ms": 6000.0,
-      "p99_ms": 8200.0,
+      "failures": 194,
+      "p50_ms": 2600.0,
+      "p95_ms": 6200.0,
+      "p99_ms": 7600.0,
       "per_second": 19.9
     },
     "page open to seats held": {
-      "count": 847,
+      "count": 855,
       "failures": 0,
-      "p50_ms": 6600.0,
-      "p95_ms": 18000.0,
-      "p99_ms": 20000.0,
-      "per_second": 11.2
+      "p50_ms": 6300.0,
+      "p95_ms": 15000.0,
+      "p99_ms": 17000.0,
+      "per_second": 11.3
     },
     "page open to tickets": {
-      "count": 673,
+      "count": 736,
       "failures": 0,
-      "p50_ms": 39000.0,
-      "p95_ms": 51000.0,
-      "p99_ms": 54000.0,
-      "per_second": 8.9
+      "p50_ms": 37000.0,
+      "p95_ms": 48000.0,
+      "p99_ms": 51000.0,
+      "per_second": 9.7
     },
     "Aggregated": {
-      "count": 40831,
-      "failures": 1079,
-      "p50_ms": 12.0,
-      "p95_ms": 5300.0,
-      "p99_ms": 37000.0,
-      "per_second": 541.7
+      "count": 41918,
+      "failures": 801,
+      "p50_ms": 10.0,
+      "p95_ms": 5200.0,
+      "p99_ms": 36000.0,
+      "per_second": 555.2
     }
   },
   "outcomes": {
-    "hold won": 847,
-    "hold refused": 1312,
-    "hold error 503": 460,
-    "order error 503": 174,
-    "order paid": 673,
-    "nothing left to pick": 626,
-    "gave up": 27
+    "hold won": 855,
+    "hold refused": 1381,
+    "hold error 503": 297,
+    "order error 503": 119,
+    "order paid": 736,
+    "gave up": 44,
+    "nothing left to pick": 601
   },
-  "seats_sold": 1346,
+  "seats_sold": 1472,
   "seats_total": 2000,
-  "orders_paid": 673,
-  "tickets": 1346,
+  "orders_paid": 736,
+  "tickets": 1472,
   "deadlocks": 0,
   "server_errors_logged": 0,
   "invariants_broken": {}
