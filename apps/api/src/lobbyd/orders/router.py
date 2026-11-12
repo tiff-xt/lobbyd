@@ -66,11 +66,24 @@ async def get_order(
 
     # After paying, a client asks for its order again and again until the
     # payment settles: during a sale this is the most frequent signed-in
-    # request there is. The rendered order is cached until it changes (every
-    # path that changes an order drops the entry after committing), so those
-    # polls cost one Redis read each, not five queries. The key includes the
-    # user, so nobody can be served someone else's order.
-    body = await cached(redis, service.cache_key(user.id, order_id), load, fresh_seconds=30)
+    # request there is. The rendered order is cached, so most of those polls
+    # cost one Redis read, not five queries. The key includes the user, so
+    # nobody can be served someone else's order.
+    #
+    # A settled order is kept for thirty seconds. A pending one for barely
+    # more than a second, however it got there. Every path that changes an
+    # order drops the entry after committing, but that alone is not enough: a
+    # read that began before the commit can finish after the drop and put
+    # "pending" back. With a short life for pending, that stale copy lasts a
+    # moment. (A load test caught this: orders paid in the database showed
+    # as pending to their buyers for the full thirty seconds.)
+    body = await cached(
+        redis,
+        service.cache_key(user.id, order_id),
+        load,
+        fresh_seconds=30,
+        fresh_for=lambda order: 1.2 if '"status":"pending"' in order else 30,
+    )
     return Response(body, media_type="application/json")
 
 

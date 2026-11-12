@@ -61,8 +61,13 @@ async def cached(
     *,
     fresh_seconds: float,
     stale_seconds: float = 0,
+    fresh_for: Callable[[str], float] | None = None,
 ) -> str:
     """Return the JSON text for `key`, building it with `load` when needed.
+
+    `fresh_for`, if given, chooses the fresh time from the value just built
+    (it overrides `fresh_seconds`). Use it when some values are settled and
+    safe to keep, and others are about to change.
 
     Two problems are handled, both of which show up exactly when traffic peaks.
 
@@ -80,7 +85,9 @@ async def cached(
     if not enabled:
         return await load()
     try:
-        return await _cached(redis, key, load, fresh_seconds, stale_seconds)
+        return await _cached(
+            redis, key, load, fresh_for or (lambda _: fresh_seconds), stale_seconds
+        )
     except RedisError:
         # Redis failed at some point along the way. Slower, never wrong.
         stats.errors += 1
@@ -91,7 +98,7 @@ async def _cached(
     redis: Redis,
     key: str,
     load: Callable[[], Awaitable[str]],
-    fresh_seconds: float,
+    fresh_seconds: Callable[[str], float],
     stale_seconds: float,
 ) -> str:
     raw = await _get(redis, key)
@@ -134,14 +141,15 @@ async def _rebuild(
     redis: Redis,
     key: str,
     load: Callable[[], Awaitable[str]],
-    fresh_seconds: float,
+    fresh_seconds: Callable[[str], float],
     stale_seconds: float,
 ) -> str:
     stats.rebuilds += 1
     try:
         value = await load()
-        ttl_ms = int((fresh_seconds + stale_seconds) * 1000)
-        await redis.set(key, f"{time.time() + fresh_seconds}|{value}", px=max(ttl_ms, 1))
+        fresh = fresh_seconds(value)
+        ttl_ms = int((fresh + stale_seconds) * 1000)
+        await redis.set(key, f"{time.time() + fresh}|{value}", px=max(ttl_ms, 1))
         return value
     finally:
         await redis.delete(f"lock:{key}")

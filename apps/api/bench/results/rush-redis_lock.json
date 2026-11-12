@@ -1,106 +1,105 @@
 {
   "scenario": "rush-redis_lock",
-  "users": 1000,
-  "seconds": 35,
+  "users": 500,
+  "seconds": 30,
   "api_workers": 3,
   "settings": {
-    "LOBBYD_CLAIM_STRATEGY": "redis_lock"
+    "LOBBYD_CLAIM_STRATEGY": "redis_lock",
+    "BENCH_GROUP": "2-4"
   },
   "requests": {
     "GET availability": {
-      "count": 10509,
+      "count": 5049,
       "failures": 0,
       "p50_ms": 3.0,
-      "p95_ms": 570.0,
-      "p99_ms": 2600.0,
-      "per_second": 308.1
+      "p95_ms": 220.0,
+      "p99_ms": 370.0,
+      "per_second": 168.3
     },
     "GET order": {
-      "count": 483,
-      "failures": 1,
-      "p50_ms": 130.0,
-      "p95_ms": 2600.0,
-      "p99_ms": 4300.0,
-      "per_second": 14.2
+      "count": 313,
+      "failures": 0,
+      "p50_ms": 16.0,
+      "p95_ms": 1200.0,
+      "p99_ms": 1800.0,
+      "per_second": 10.4
     },
     "GET seat map": {
-      "count": 1000,
+      "count": 500,
       "failures": 0,
-      "p50_ms": 180.0,
-      "p95_ms": 320.0,
-      "p99_ms": 340.0,
-      "per_second": 29.3
+      "p50_ms": 150.0,
+      "p95_ms": 230.0,
+      "p99_ms": 280.0,
+      "per_second": 16.7
     },
     "GET tournament": {
-      "count": 1000,
+      "count": 500,
       "failures": 0,
-      "p50_ms": 1200.0,
-      "p95_ms": 3300.0,
-      "p99_ms": 3600.0,
-      "per_second": 29.3
+      "p50_ms": 570.0,
+      "p95_ms": 1800.0,
+      "p99_ms": 1900.0,
+      "per_second": 16.7
     },
     "POST holds": {
-      "count": 2084,
-      "failures": 51,
-      "p50_ms": 1200.0,
-      "p95_ms": 4700.0,
-      "p99_ms": 5500.0,
-      "per_second": 61.1
+      "count": 867,
+      "failures": 0,
+      "p50_ms": 810.0,
+      "p95_ms": 3100.0,
+      "p99_ms": 4000.0,
+      "per_second": 28.9
     },
     "POST orders": {
-      "count": 109,
-      "failures": 13,
-      "p50_ms": 2500.0,
-      "p95_ms": 5200.0,
-      "p99_ms": 5300.0,
-      "per_second": 3.2
+      "count": 81,
+      "failures": 0,
+      "p50_ms": 1300.0,
+      "p95_ms": 3300.0,
+      "p99_ms": 3900.0,
+      "per_second": 2.7
     },
     "POST queue": {
-      "count": 1000,
-      "failures": 61,
-      "p50_ms": 1400.0,
-      "p95_ms": 5200.0,
-      "p99_ms": 5500.0,
-      "per_second": 29.3
+      "count": 502,
+      "failures": 2,
+      "p50_ms": 1100.0,
+      "p95_ms": 4300.0,
+      "p99_ms": 5100.0,
+      "per_second": 16.7
     },
     "page open to seats held": {
-      "count": 109,
+      "count": 81,
       "failures": 0,
-      "p50_ms": 2600.0,
-      "p95_ms": 7400.0,
-      "p99_ms": 7700.0,
-      "per_second": 3.2
+      "p50_ms": 2500.0,
+      "p95_ms": 4500.0,
+      "p99_ms": 4900.0,
+      "per_second": 2.7
     },
     "page open to tickets": {
-      "count": 96,
+      "count": 81,
       "failures": 0,
-      "p50_ms": 15000.0,
-      "p95_ms": 17000.0,
-      "p99_ms": 18000.0,
-      "per_second": 2.8
+      "p50_ms": 9000.0,
+      "p95_ms": 10000.0,
+      "p99_ms": 10000.0,
+      "per_second": 2.7
     },
     "Aggregated": {
-      "count": 16390,
-      "failures": 126,
-      "p50_ms": 91.0,
-      "p95_ms": 3100.0,
-      "p99_ms": 5300.0,
-      "per_second": 480.6
+      "count": 7974,
+      "failures": 2,
+      "p50_ms": 35.0,
+      "p95_ms": 2200.0,
+      "p99_ms": 7100.0,
+      "per_second": 265.8
     }
   },
   "outcomes": {
-    "hold won": 109,
-    "hold refused": 1924,
-    "nothing left to pick": 826,
-    "hold error 503": 51,
-    "order paid": 96,
-    "order error 503": 13,
-    "gave up": 65
+    "hold won": 81,
+    "hold refused": 786,
+    "nothing left to pick": 413,
+    "gave up": 6,
+    "order paid": 81
   },
-  "seats_sold": 192,
+  "seats_sold": 217,
   "seats_total": 250,
-  "orders_paid": 96,
-  "tickets": 192,
+  "orders_paid": 81,
+  "tickets": 217,
   "deadlocks": 0,
   "server_errors_logged": 0,
   "invariants_broken": {}

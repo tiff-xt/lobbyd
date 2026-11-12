@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 
 import pytest
 from fastapi import FastAPI
@@ -372,3 +373,51 @@ async def test_a_cached_order_updates_the_moment_payment_lands(
     paid = (await client.get(path, headers=buyer)).json()
     assert paid["status"] == "paid"
     assert len(paid["tickets"]) == 2
+
+
+async def test_fresh_time_can_depend_on_the_value(app: FastAPI) -> None:
+    states = iter(['{"status":"pending"}', '{"status":"paid"}', '{"status":"never read"}'])
+
+    async def load() -> str:
+        return next(states)
+
+    def fresh_for(value: str) -> float:
+        return 0.05 if "pending" in value else 60
+
+    async def read() -> str:
+        return await cached(app.state.redis, "o", load, fresh_seconds=60, fresh_for=fresh_for)
+
+    assert await read() == '{"status":"pending"}'
+    await asyncio.sleep(0.08)  # a pending value is only trusted briefly
+    assert await read() == '{"status":"paid"}'
+    await asyncio.sleep(0.08)  # a settled one is kept
+    assert await read() == '{"status":"paid"}'
+
+
+async def test_a_stale_pending_order_cannot_outlive_its_short_cache_time(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    """The race a load test found: a read that began before payment committed
+    writes "pending" back into the cache after the entry was dropped."""
+    from lobbyd.orders import service as orders
+    from tests.helpers import settle
+
+    sale = await open_sale(client, sessionmaker)
+    (buyer,) = await make_buyers(sessionmaker, settings, 1)
+    held = (await hold(client, buyer, sale, seats=sale.seat_ids[:1])).json()
+    order = (
+        await client.post("/orders", json={"hold_id": held["id"]}, headers={**buyer, **key()})
+    ).json()
+    path = f"/orders/{order['id']}"
+    pending = (await client.get(path, headers=buyer)).text
+
+    await settle(app)  # paid, and the cached entry dropped
+    # The late reader now stores its old copy, exactly as the entry would
+    # have been written, with the lifetime a pending order is given.
+    user_id = (await client.get("/users/me", headers=buyer)).json()["id"]
+    await app.state.redis.set(
+        orders.cache_key(user_id, order["id"]), f"{time.time() + 1.2}|{pending}", px=1200
+    )
+    assert (await client.get(path, headers=buyer)).json()["status"] == "pending"  # briefly wrong
+    await asyncio.sleep(1.3)
+    assert (await client.get(path, headers=buyer)).json()["status"] == "paid"  # and then not

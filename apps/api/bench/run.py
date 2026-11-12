@@ -39,6 +39,15 @@ SCENARIOS: dict[str, tuple[list[str], dict[str, str], int, int, int]] = {
         150,
         75,
     ),
+    # The waiting room again, admitting at a rate chosen from the "steady"
+    # result, and run for long enough to let everyone through.
+    "sale-waiting-room-tuned": (
+        ["--seats", "2000", "--buyers", "1500", "--waiting-room"],
+        {"LOBBYD_WAITING_ROOM_ADMIT_PER_SECOND": "20"},
+        1500,
+        150,
+        110,
+    ),
     # The same sale at a pace this machine can serve: what latency looks
     # like when the system is not overloaded.
     "steady": (["--seats", "2000", "--buyers", "400"], {}, 400, 15, 60),
