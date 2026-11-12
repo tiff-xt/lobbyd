@@ -12,7 +12,7 @@ Each phase ends with something that runs and is tested. A phase is done when its
 | 5 | Performance under load | Done |
 | 6 | Teams and waitlist | Done |
 | 7 | Check-in and live brackets | Done |
-| 8 | Observability and deployment | Not started |
+| 8 | Observability and deployment | Done, except going live (needs the owner's hosting accounts; see [deploy](deploy.md)) |
 | 9 | Demo client | Done (ahead of order; the waiting room and brackets screens follow their phases) |
 
 ## Phase 0. Design
@@ -70,6 +70,8 @@ Signed ticket tokens, online scanning, manifest download and offline sync ([ADR 
 Prometheus metrics, OpenTelemetry tracing, Grafana dashboard in Compose, alerts for the key metrics, production Dockerfile, hosted demo on free tiers, "scaling to 100x" write-up expanded from the design document.
 
 **Done when:** the dashboard shows a load test as it runs; the hosted demo is reachable and reseeds itself; the README links to it.
+
+**Outcome:** metrics, tracing, the dashboard, and nine alert rules with unit tests are in ([observability](observability.md)); one checkout is one trace across both queues and the payment provider. The demo runs as a single process that migrates and reseeds itself, tested locally with production settings, with a Render blueprint and step by step instructions ([deploy](deploy.md)). The scaling write-up is [here](scaling.md). Two things could not be done from where this was built: the Grafana dashboard has not been looked at in a running Grafana (CI checks its queries against the metrics the code defines), and the demo has not been deployed.
 
 ## Phase 9. Demo client
 

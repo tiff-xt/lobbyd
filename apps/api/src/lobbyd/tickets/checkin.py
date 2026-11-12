@@ -23,6 +23,7 @@ from sqlalchemy.orm import aliased
 from lobbyd.catalog import service as catalog
 from lobbyd.catalog.schemas import SeatLabel
 from lobbyd.catalog.service import Managed
+from lobbyd.platform import metrics
 from lobbyd.platform.errors import ProblemError
 from lobbyd.platform.ids import uuid7
 from lobbyd.tickets import tokens
@@ -257,6 +258,7 @@ async def scan(session: AsyncSession, managed: Managed, data: ScanIn) -> ScanOut
     )
     names = await catalog.ticket_type_names(session, [ticket_type_id])
     seats = await catalog.seat_labels(session, [seat_id]) if seat_id else {}
+    metrics.SCANS.labels("online", result).inc()
     log.info("ticket_scanned", ticket_id=str(ticket_id), result=result, device=data.device_id)
     return ScanOut(
         scan_id=scan_id,
@@ -366,5 +368,7 @@ async def sync(session: AsyncSession, managed: Managed, data: SyncIn) -> SyncOut
         results[item.id] = SyncedScan(id=item.id, result=result, clock_suspect=suspect)
 
     tally = Counter(scan.result for scan in results.values())
+    for result, count in tally.items():
+        metrics.SCANS.labels("offline", result).inc(count)
     log.info("scans_synced", device=data.device_id, total=len(data.scans), **tally)
     return SyncOut(scans=[results[item.id] for item in data.scans])

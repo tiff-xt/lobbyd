@@ -15,7 +15,7 @@ from lobbyd.identity.router import router as identity_router
 from lobbyd.inventory.router import router as inventory_router
 from lobbyd.orders.router import router as orders_router
 from lobbyd.payments.provider import PaymentProvider, PaysimProvider
-from lobbyd.platform import cache, health
+from lobbyd.platform import cache, health, metrics, tracing
 from lobbyd.platform.cache import create_redis
 from lobbyd.platform.db import create_engine, create_sessionmaker
 from lobbyd.platform.errors import (
@@ -36,6 +36,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(json=settings.log_json)
+    tracing.configure(settings, "lobbyd-api")
     wire_modules()
     cache.enabled = settings.cache_enabled
     catalog.configure_memos(settings.catalog_memo_seconds)
@@ -77,6 +78,7 @@ def create_app(
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(metrics.router)
     app.include_router(identity_router)
     app.include_router(catalog_router)
     app.include_router(inventory_router)
@@ -84,6 +86,7 @@ def create_app(
     app.include_router(teams_router)
     app.include_router(checkin_router)
     app.include_router(brackets_router)
+    tracing.instrument_app(app)
     return app
 
 

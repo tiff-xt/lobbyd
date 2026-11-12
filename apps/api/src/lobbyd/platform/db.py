@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends, Request
-from sqlalchemy import MetaData
+from sqlalchemy import MetaData, event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from lobbyd.config import Settings
+from lobbyd.platform import metrics, tracing
 
 # Explicit constraint names, so migrations can refer to them reliably.
 NAMING_CONVENTION = {
@@ -31,13 +32,21 @@ class Base(DeclarativeBase):
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
-    return create_async_engine(
+    engine = create_async_engine(
         settings.database_url,
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
         pool_timeout=settings.db_pool_timeout_seconds,
         pool_pre_ping=True,
     )
+    # Count connections as they are lent out and handed back. When "in use"
+    # sits at "capacity", requests are queueing for the database.
+    metrics.DB_POOL.labels("capacity").inc(settings.db_pool_size + settings.db_max_overflow)
+    in_use = metrics.DB_POOL.labels("in_use")
+    event.listen(engine.sync_engine, "checkout", lambda *_: in_use.inc())
+    event.listen(engine.sync_engine, "checkin", lambda *_: in_use.dec())
+    tracing.instrument_engine(engine)
+    return engine
 
 
 def create_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

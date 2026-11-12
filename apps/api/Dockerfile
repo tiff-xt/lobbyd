@@ -13,11 +13,13 @@ WORKDIR /workspace
 COPY pyproject.toml uv.lock ./
 COPY apps/api/pyproject.toml apps/api/pyproject.toml
 COPY apps/paysim/pyproject.toml apps/paysim/pyproject.toml
+COPY apps/demo/pyproject.toml apps/demo/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-workspace
 
 COPY apps/api apps/api
 COPY apps/paysim apps/paysim
+COPY apps/demo apps/demo
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 

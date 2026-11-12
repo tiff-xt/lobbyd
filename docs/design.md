@@ -219,7 +219,7 @@ All write endpoints that create something accept `Idempotency-Key`. Lists use cu
 
 ## 8. Scaling beyond one machine
 
-Not built, but the design leaves room for it. These are the steps in the order they would be needed:
+Not built, but the design leaves room for it. These are the steps in the order they would be needed ([scaling](scaling.md) goes through each in detail):
 
 1. **More API instances.** Already possible; the API holds no state.
 2. **Read replicas** for browse and search. Availability can tolerate a second of staleness because the claim itself is always checked on the primary.
@@ -230,7 +230,7 @@ Not built, but the design leaves room for it. These are the steps in the order t
 ## 9. Observability and testing
 
 - **Logs:** structured JSON with a request id that follows the request into workers.
-- **Metrics:** Prometheus. The ones that matter: hold attempts by outcome, hold latency, oversell count (must stay at zero and is alerted on), outbox lag, waiting room depth, webhook duplicates.
-- **Tracing:** OpenTelemetry across API, database, Redis, and workers.
+- **Metrics:** Prometheus. The ones that matter: requests and latency by route, refusals by reason, broken invariants (must stay at zero and pages if not), outbox lag, events handled by outcome. See [observability](observability.md).
+- **Tracing:** OpenTelemetry across API, database, Redis, and workers. The trace context travels with each outbox event, so one checkout is one trace.
 - **Tests:** unit tests for pure logic; integration tests against a real Postgres and Redis; dedicated concurrency tests that fire many simultaneous claims at the same seats and assert the invariants; property-style tests for the order state machine.
 - **Load tests:** Locust scenarios for the reference sale, run in CI at small scale as a regression check and by hand at larger scale for the published benchmarks.

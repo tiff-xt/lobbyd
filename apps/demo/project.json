@@ -1,0 +1,31 @@
+{
+  "name": "demo",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/demo/src",
+  "implicitDependencies": [
+    "api",
+    "paysim"
+  ],
+  "targets": {
+    "serve": {
+      "command": "uv run uvicorn --factory lobbyd_demo.main:app --port 8000",
+      "options": {
+        "cwd": "apps/api"
+      },
+      "continuous": true
+    },
+    "lint": {
+      "command": "uv run ruff check . && uv run ruff format --check .",
+      "options": {
+        "cwd": "apps/demo"
+      }
+    },
+    "typecheck": {
+      "command": "uv run mypy src",
+      "options": {
+        "cwd": "apps/demo"
+      }
+    }
+  }
+}

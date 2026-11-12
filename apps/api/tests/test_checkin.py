@@ -12,10 +12,12 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import FastAPI
 from httpx import AsyncClient
+from pydantic import SecretStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lobbyd.config import Settings
+from lobbyd.tickets import tokens
 from tests.helpers import Sale, buy, hold, make_buyers, open_sale, settle
 from tests.invariants import assert_invariants
 from tests.test_teams import enter
@@ -295,3 +297,18 @@ async def test_doors_syncing_the_same_tickets_at_once(
     report = await summary(client, sale)
     assert (report["checked_in"], report["duplicates"]) == (18, 18 * 5)
     await assert_invariants(sessionmaker)
+
+
+def test_a_signing_key_is_accepted_in_either_base64_alphabet() -> None:
+    seed = bytes(range(250, 256)) * 5 + b"\xfb\xff"  # encodes with +, /, and padding
+    standard = base64.b64encode(seed).decode()
+    urlsafe = base64.urlsafe_b64encode(seed).rstrip(b"=").decode()
+    assert "+" in standard or "/" in standard
+    keys = []
+    for encoded in (standard, urlsafe):
+        tokens.configure(Settings(ticket_signing_key=SecretStr(encoded)))
+        keys.append(tokens.signer().public_key)
+    assert keys[0] == keys[1]
+    with pytest.raises(ValueError, match="32 bytes"):
+        tokens.configure(Settings(ticket_signing_key=SecretStr("dG9vIHNob3J0")))
+    tokens.configure(Settings())  # back to the test key

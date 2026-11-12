@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Mapped, mapped_column
 
+from lobbyd.platform import metrics, tracing
 from lobbyd.platform.db import Base
 from lobbyd.platform.ids import uuid7
 
@@ -35,6 +36,8 @@ class OutboxEvent(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
     topic: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # The trace the event was emitted in, so its handlers can continue it.
+    trace: Mapped[dict[str, str] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now()
     )
@@ -43,7 +46,11 @@ class OutboxEvent(Base):
 
 async def emit(session: AsyncSession, topic: str, payload: dict[str, Any]) -> None:
     """Record an event. It is published only if the caller's transaction commits."""
-    await session.execute(insert(OutboxEvent).values(id=uuid7(), topic=topic, payload=payload))
+    await session.execute(
+        insert(OutboxEvent).values(
+            id=uuid7(), topic=topic, payload=payload, trace=tracing.current_context()
+        )
+    )
 
 
 async def relay_once(
@@ -57,7 +64,7 @@ async def relay_once(
     async with sessionmaker.begin() as session:
         events = (
             await session.execute(
-                select(OutboxEvent.id, OutboxEvent.topic, OutboxEvent.payload)
+                select(OutboxEvent.id, OutboxEvent.topic, OutboxEvent.payload, OutboxEvent.trace)
                 .where(OutboxEvent.published_at.is_(None))
                 .order_by(OutboxEvent.id)
                 .limit(batch)
@@ -69,11 +76,17 @@ async def relay_once(
             return 0
         pipeline = redis.pipeline(transaction=False)
         for event in events:
-            pipeline.xadd(
-                STREAM,
-                {"id": str(event.id), "topic": event.topic, "payload": json.dumps(event.payload)},
-            )
+            fields = {
+                "id": str(event.id),
+                "topic": event.topic,
+                "payload": json.dumps(event.payload),
+            }
+            if event.trace:
+                fields["trace"] = json.dumps(event.trace)
+            pipeline.xadd(STREAM, fields)  # type: ignore[arg-type]
         await pipeline.execute()
+        for event in events:
+            metrics.OUTBOX_PUBLISHED.labels(event.topic).inc()
         await session.execute(
             update(OutboxEvent)
             .where(OutboxEvent.id.in_([event.id for event in events]))

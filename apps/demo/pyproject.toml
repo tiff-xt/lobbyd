@@ -1,0 +1,18 @@
+[project]
+name = "lobbyd-demo"
+version = "0.1.0"
+description = "The whole lobbyd backend in one process, for a hosted demo on a single free instance."
+requires-python = ">=3.13"
+license = "MIT"
+dependencies = ["lobbyd", "paysim"]
+
+[tool.uv.sources]
+lobbyd = { workspace = true }
+paysim = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lobbyd_demo"]

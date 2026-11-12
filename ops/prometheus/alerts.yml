@@ -1,0 +1,90 @@
+# What should wake someone up, and what should only be looked at in the morning.
+#
+#   page:   customers are affected now, or the data is wrong
+#   ticket: something is drifting and will hurt if left
+#
+# Every alert is on a symptom (errors, slowness, work not getting done), not
+# a cause (CPU, memory): causes change, symptoms are what matter.
+# Tested in alerts_test.yml: promtool test rules ops/prometheus/alerts_test.yml
+
+groups:
+  - name: lobbyd-correctness
+    rules:
+      - alert: InvariantViolated
+        expr: lobbyd_invariant_violations > 0
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $value }} data model rule(s) are broken"
+          description: Reconciliation found rows that break a rule of the data model. The worker log line "invariant_violated" names the rule and example rows. Stop the affected sale before investigating.
+
+      - alert: ReconciliationNotRunning
+        expr: time() - lobbyd_reconciled_timestamp_seconds > 900
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Reconciliation has not finished for {{ $value | humanizeDuration }}"
+          description: It runs every five minutes in the worker. While it is not running, a broken invariant would go unnoticed.
+
+  - name: lobbyd-api
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(lobbyd_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(lobbyd_http_requests_total[5m])) > 0.02
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of requests are failing"
+          description: More than 2% of requests have returned a 5xx for five minutes. 503 "overloaded" means the database pool is exhausted; anything else is a bug.
+
+      - alert: HoldsAreSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(lobbyd_http_request_duration_seconds_bucket{method="POST", route="/holds"}[5m]))
+          ) > 1
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Holding a seat takes {{ $value | humanizeDuration }} at the 95th percentile"
+          description: The hold is the step buyers race on. Over a second means they are queueing on the database. Turn on the tournament's waiting room, or lower its admission rate.
+
+      - alert: DatabasePoolSaturated
+        expr: |
+          sum(lobbyd_db_pool_connections{state="in_use"})
+            / sum(lobbyd_db_pool_connections{state="capacity"}) > 0.9
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of database connections are in use"
+          description: Requests are close to waiting for a connection. The next step is shedding load with 503s.
+
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $labels.job }} is not answering scrapes"
+
+  - name: lobbyd-background
+    rules:
+      - alert: OutboxBacklog
+        expr: lobbyd_outbox_lag_seconds > 30
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "The oldest unpublished event is {{ $value | humanizeDuration }} old"
+          description: Events are committed but not reaching the workers, so payments are not being requested and confirmations are not going out. Check that a worker is running and can reach Redis.
+
+      - alert: EventsDeadLettered
+        expr: sum by (topic) (increase(lobbyd_events_handled_total{outcome="dead"}[15m])) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: "{{ $labels.topic }} events are being given up on"
+          description: A handler failed every retry and the event was moved to the dead-letter stream (lobbyd:events:dead). It needs a person to fix the cause and replay it.
+
+      - alert: WorkerLoopFailing
+        expr: sum by (loop) (rate(lobbyd_worker_loop_failures_total[5m])) > 0.1
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "The worker's {{ $labels.loop }} loop keeps failing"

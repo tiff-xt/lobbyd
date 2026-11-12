@@ -1,0 +1,54 @@
+# Render blueprint for the hosted demo: one free web service and one free
+# Key Value (Redis) instance. Postgres is on Neon, whose free plan does not
+# expire. Step by step: docs/deploy.md
+#
+# The web service runs the API, the worker, and the payment simulator in one
+# process (apps/demo), because a free plan has no background workers.
+
+services:
+  - type: web
+    name: lobbyd-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: sh -c "uvicorn --factory lobbyd_demo.main:app --host 0.0.0.0 --port $PORT --no-access-log"
+    healthCheckPath: /healthz
+    envVars:
+      - key: LOBBYD_ENVIRONMENT
+        value: production
+      # Paste the connection string from Neon (the direct one, not "pooled").
+      - key: LOBBYD_DATABASE_URL
+        sync: false
+      - key: LOBBYD_REDIS_URL
+        fromService:
+          type: keyvalue
+          name: lobbyd-redis
+          property: connectionString
+      # Generated once by Render and kept. Never written down anywhere else.
+      - key: LOBBYD_JWT_SECRET
+        generateValue: true
+      - key: LOBBYD_PAYSIM_WEBHOOK_SECRET
+        generateValue: true
+      - key: LOBBYD_TICKET_SIGNING_KEY
+        generateValue: true
+      # Sized for a 512 MB instance and the free database's connection limit.
+      - key: LOBBYD_DB_POOL_SIZE
+        value: "5"
+      - key: LOBBYD_DB_MAX_OVERFLOW
+        value: "5"
+      - key: LOBBYD_REDIS_MAX_CONNECTIONS
+        value: "20"
+      # Requests arrive through Render's proxy and the web client's.
+      - key: LOBBYD_TRUST_FORWARDED_FOR
+        value: "true"
+      - key: LOBBYD_WORKER_METRICS_PORT
+        value: "0"
+
+  - type: keyvalue
+    name: lobbyd-redis
+    plan: free
+    # Reachable only from this account's services.
+    ipAllowList: []
+    # Never evict: the event stream and the rate limiter live here.
+    maxmemoryPolicy: noeviction

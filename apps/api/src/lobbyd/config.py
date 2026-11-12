@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import SecretStr, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Only ever valid outside production; the validator below enforces that.
@@ -79,6 +79,35 @@ class Settings(BaseSettings):
     trust_forwarded_for: bool = False
 
     log_json: bool = False
+
+    # Where to send traces (an OTLP/HTTP collector such as Jaeger, e.g.
+    # http://jaeger:4318). Empty: tracing is off and costs nothing.
+    otlp_endpoint: str = ""
+    # The worker has no HTTP server, so it serves its metrics here. 0 turns it off.
+    worker_metrics_port: int = 9100
+
+    @field_validator("database_url")
+    @classmethod
+    def _use_asyncpg(cls, url: str) -> str:
+        """Accept a connection string as hosting providers hand it out.
+
+        They give `postgres://...?sslmode=require`. This app talks to Postgres
+        through asyncpg, which wants its own scheme and spells TLS `ssl`.
+        """
+        scheme, separator, rest = url.partition("://")
+        if scheme in ("postgres", "postgresql"):
+            url = f"postgresql+asyncpg{separator}{rest}"
+        base, question, query = url.partition("?")
+        if not question:
+            return url
+        kept = []
+        for part in query.split("&"):
+            name, _, value = part.partition("=")
+            if name == "sslmode":
+                kept.append(f"ssl={value}")
+            elif name != "channel_binding":  # libpq only
+                kept.append(part)
+        return f"{base}?{'&'.join(kept)}" if kept else base
 
     @model_validator(mode="after")
     def _require_real_secret_in_production(self) -> Self:

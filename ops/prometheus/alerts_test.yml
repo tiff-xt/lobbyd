@@ -1,0 +1,94 @@
+# Unit tests for the alert rules: promtool test rules ops/prometheus/alerts_test.yml
+# Each case feeds made-up series through the rules and asks which alerts are firing.
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: a broken invariant pages at once
+    interval: 1m
+    input_series:
+      - series: lobbyd_invariant_violations
+        values: "0 0 2 2"
+    promql_expr_test:
+      - expr: ALERTS{alertname="InvariantViolated", alertstate="firing"}
+        eval_time: 1m
+        exp_samples: []
+      - expr: ALERTS{alertname="InvariantViolated", alertstate="firing"}
+        eval_time: 2m
+        exp_samples:
+          - labels: 'ALERTS{alertname="InvariantViolated", alertstate="firing", severity="page"}'
+            value: 1
+
+  - name: five percent of requests failing pages after five minutes, not before
+    interval: 1m
+    input_series:
+      - series: 'lobbyd_http_requests_total{method="GET", route="/tournaments", status="200"}'
+        values: "0+570x20"
+      - series: 'lobbyd_http_requests_total{method="POST", route="/holds", status="503"}'
+        values: "0+30x20"
+    promql_expr_test:
+      - expr: ALERTS{alertname="HighErrorRate", alertstate="firing"}
+        eval_time: 4m
+        exp_samples: []
+      - expr: ALERTS{alertname="HighErrorRate", alertstate="firing"}
+        eval_time: 12m
+        exp_samples:
+          - labels: 'ALERTS{alertname="HighErrorRate", alertstate="firing", severity="page"}'
+            value: 1
+
+  - name: one percent failing does not page
+    interval: 1m
+    input_series:
+      - series: 'lobbyd_http_requests_total{method="GET", route="/tournaments", status="200"}'
+        values: "0+594x20"
+      - series: 'lobbyd_http_requests_total{method="POST", route="/holds", status="500"}'
+        values: "0+6x20"
+    promql_expr_test:
+      - expr: ALERTS{alertname="HighErrorRate", alertstate="firing"}
+        eval_time: 15m
+        exp_samples: []
+
+  - name: a backlog in the outbox pages once it has lasted two minutes
+    interval: 1m
+    input_series:
+      - series: lobbyd_outbox_lag_seconds
+        values: "0 45 0 60 90 120 150"
+    promql_expr_test:
+      - expr: ALERTS{alertname="OutboxBacklog", alertstate="firing"}
+        eval_time: 1m # a blip
+        exp_samples: []
+      - expr: ALERTS{alertname="OutboxBacklog", alertstate="firing"}
+        eval_time: 6m
+        exp_samples:
+          - labels: 'ALERTS{alertname="OutboxBacklog", alertstate="firing", severity="page"}'
+            value: 1
+
+  - name: a dead-lettered event raises a ticket naming its topic
+    interval: 1m
+    input_series:
+      - series: 'lobbyd_events_handled_total{topic="payment.requested", outcome="dead"}'
+        values: "0 0 1 1 1"
+      - series: 'lobbyd_events_handled_total{topic="order.paid", outcome="ok"}'
+        values: "0+10x4"
+    promql_expr_test:
+      - expr: ALERTS{alertname="EventsDeadLettered", alertstate="firing"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'ALERTS{alertname="EventsDeadLettered", alertstate="firing", severity="ticket", topic="payment.requested"}'
+            value: 1
+
+  - name: a worker that stops answering pages after a minute
+    interval: 30s
+    input_series:
+      - series: 'up{job="worker", instance="worker:9100"}'
+        values: "1 1 0 0 0 0"
+      - series: 'up{job="api", instance="api:8000"}'
+        values: "1 1 1 1 1 1"
+    promql_expr_test:
+      - expr: ALERTS{alertname="TargetDown", alertstate="firing"}
+        eval_time: 150s
+        exp_samples:
+          - labels: 'ALERTS{alertname="TargetDown", alertstate="firing", severity="page", job="worker", instance="worker:9100"}'
+            value: 1

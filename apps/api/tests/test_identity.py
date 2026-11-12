@@ -305,3 +305,15 @@ def test_production_refuses_development_secrets() -> None:
         Settings(environment="production", jwt_secret=real["jwt_secret"])  # webhook secret unset
     with pytest.raises(ValidationError):
         Settings(environment="production", **{**real, "ticket_signing_key": None})  # type: ignore[arg-type]
+
+
+def test_connection_strings_are_accepted_as_hosting_providers_give_them() -> None:
+    def url(given: str) -> str:
+        return Settings(database_url=given).database_url
+
+    neon = "postgresql://u:p@ep-x.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    assert url(neon) == "postgresql+asyncpg://u:p@ep-x.aws.neon.tech/neondb?ssl=require"
+    assert url("postgres://u:p@host:5432/db") == "postgresql+asyncpg://u:p@host:5432/db"
+    # Already in this app's own form: left alone.
+    ours = "postgresql+asyncpg://lobbyd:lobbyd@localhost:5432/lobbyd?ssl=require"
+    assert url(ours) == ours

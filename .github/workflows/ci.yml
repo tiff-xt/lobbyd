@@ -75,3 +75,23 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build -f apps/api/Dockerfile -t lobbyd-api .
       - run: docker build -f apps/web/Dockerfile -t lobbyd-web .
+
+  # The monitoring config is code too: check it with the tools that will read it.
+  observability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prometheus config and alert rules
+        run: |
+          docker run --rm -v "$PWD/ops/prometheus:/etc/prometheus:ro" --entrypoint promtool \
+            prom/prometheus:v3.5.0 check config /etc/prometheus/prometheus.yml
+          docker run --rm -v "$PWD/ops/prometheus:/etc/prometheus:ro" --entrypoint promtool \
+            prom/prometheus:v3.5.0 test rules /etc/prometheus/alerts_test.yml
+      - name: Compose overlay is valid and its images exist
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.obs.yml config --quiet
+          for image in $(docker compose -f docker-compose.yml -f docker-compose.obs.yml config --images | grep -E 'prom/|grafana/|jaegertracing/'); do
+            docker manifest inspect "$image" > /dev/null && echo "ok $image"
+          done
+      - name: Dashboard is valid JSON and only queries metrics the code defines
+        run: python3 ops/check_dashboard.py

@@ -26,7 +26,7 @@ from lobbyd.inventory import service as inventory
 from lobbyd.orders import payment_flow
 from lobbyd.orders import service as orders
 from lobbyd.payments.provider import PaysimProvider
-from lobbyd.platform import events, idempotency, outbox
+from lobbyd.platform import events, idempotency, metrics, outbox, tracing
 from lobbyd.platform.cache import create_redis, invalidate
 from lobbyd.platform.db import create_engine, create_sessionmaker
 from lobbyd.platform.events import EventContext
@@ -94,6 +94,15 @@ class _Housekeeping:
             await teams.release_abandoned(session)
         async with ctx.sessionmaker.begin() as session:
             await teams.promote_waitlist(session, ctx.settings)
+        for what, count in (
+            ("holds_expired", expired),
+            ("seats_freed", freed),
+            ("orders_expired", stale),
+            ("payments_polled", moved),
+        ):
+            metrics.HOUSEKEEPING.labels(what).inc(count)
+        async with ctx.sessionmaker() as session:
+            metrics.OUTBOX_LAG.set(await outbox.lag_seconds(session))
         if expired or freed or stale or moved:
             log.info(
                 "housekeeping",
@@ -126,13 +135,27 @@ async def _forever(
         except Exception:
             # One bad pass must not stop the loop. Whatever it missed is
             # still in the database or the stream for the next pass.
+            metrics.WORKER_LOOP_FAILURES.labels(name).inc()
             log.exception("worker_loop_failed", loop=name)
             await asyncio.sleep(1)
+
+
+def start_loops(ctx: EventContext) -> list[asyncio.Task[None]]:
+    """Start the four loops as tasks on the running event loop. Cancel them to stop."""
+    return [
+        asyncio.create_task(_forever("relay", _relay, ctx)),
+        asyncio.create_task(_forever("consume", _consume, ctx)),
+        asyncio.create_task(_forever("admit", _admit, ctx)),
+        asyncio.create_task(_forever("housekeeping", _Housekeeping(), ctx)),
+    ]
 
 
 async def run() -> None:
     settings = get_settings()
     configure_logging(json=settings.log_json)
+    tracing.configure(settings, "lobbyd-worker")
+    if settings.worker_metrics_port:
+        metrics.serve(settings.worker_metrics_port)
     wire_modules()
     engine = create_engine(settings)
     ctx = EventContext(
@@ -148,12 +171,7 @@ async def run() -> None:
         loop.add_signal_handler(sig, stop.set)
 
     log.info("worker_started", consumer=ctx.consumer)
-    tasks = [
-        asyncio.create_task(_forever("relay", _relay, ctx)),
-        asyncio.create_task(_forever("consume", _consume, ctx)),
-        asyncio.create_task(_forever("admit", _admit, ctx)),
-        asyncio.create_task(_forever("housekeeping", _Housekeeping(), ctx)),
-    ]
+    tasks = start_loops(ctx)
     try:
         await stop.wait()
     finally:
@@ -165,6 +183,7 @@ async def run() -> None:
         await ctx.provider.aclose()
         await ctx.redis.aclose()
         await engine.dispose()
+        tracing.shutdown()
         log.info("worker_stopped")
 
 

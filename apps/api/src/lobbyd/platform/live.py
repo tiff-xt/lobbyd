@@ -20,6 +20,8 @@ import structlog
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from lobbyd.platform import metrics
+
 log = structlog.get_logger()
 
 CHANNEL_PREFIX = "live:"
@@ -90,6 +92,7 @@ class Hub:
     def subscribe(self, topic: str) -> Subscription:
         subscription = Subscription(self, topic)
         self._subscribers.setdefault(topic, set()).add(subscription)
+        metrics.LIVE_CLIENTS.inc()
         return subscription
 
     @property
@@ -98,7 +101,8 @@ class Hub:
 
     def _drop(self, subscription: Subscription) -> None:
         group = self._subscribers.get(subscription.topic)
-        if group is not None:
+        if group is not None and subscription in group:
+            metrics.LIVE_CLIENTS.dec()
             group.discard(subscription)
             if not group:
                 del self._subscribers[subscription.topic]

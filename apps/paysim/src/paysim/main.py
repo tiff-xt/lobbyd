@@ -63,7 +63,13 @@ def create_app(
     @app.post("/payments", status_code=201)
     async def create_payment(body: PaymentCreate, request: Request, key: Key) -> dict[str, Any]:
         try:
-            payment = simulator(request).create_payment(key=key, **body.model_dump())
+            payment = simulator(request).create_payment(
+                key=key,
+                **body.model_dump(),
+                # Handed back on the webhook, so the caller's trace of a
+                # checkout continues through the seconds the payment takes.
+                traceparent=request.headers.get("traceparent"),
+            )
         except UnknownMethodError as exc:
             raise HTTPException(400, f"unknown payment method {exc}") from exc
         return payment.public()

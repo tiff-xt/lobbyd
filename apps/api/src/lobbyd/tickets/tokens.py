@@ -33,6 +33,8 @@ def _b64(data: bytes) -> str:
 
 
 def _unb64(text: str) -> bytes:
+    # Either base64 alphabet, padded or not: key generators differ.
+    text = text.strip().rstrip("=").replace("+", "-").replace("/", "_")
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 

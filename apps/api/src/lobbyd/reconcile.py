@@ -14,6 +14,8 @@ import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lobbyd.platform import metrics
+
 log = structlog.get_logger()
 
 STRICT = {
@@ -206,4 +208,6 @@ async def run(session: AsyncSession) -> int:
     for rule, rows in broken.items():
         # This is the alert. If it ever fires, something is badly wrong.
         log.error("invariant_violated", rule=rule, examples=[str(row) for row in rows])
+    metrics.INVARIANT_VIOLATIONS.set(len(broken))
+    metrics.RECONCILED_AT.set_to_current_time()
     return len(broken)

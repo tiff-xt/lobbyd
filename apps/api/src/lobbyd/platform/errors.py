@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import TimeoutError as PoolTimeout
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from lobbyd.platform import metrics
+
 log = structlog.get_logger()
 
 PROBLEM_JSON = "application/problem+json"
@@ -77,6 +79,9 @@ class ProblemError(Exception):
 
 
 def problem_body(path: str, status: int, code: str, detail: str, **extra: Any) -> dict[str, Any]:
+    # Counted here because every error response is built here, whichever
+    # path it takes out (some are returned through the idempotency store).
+    metrics.PROBLEMS.labels(code).inc()
     return {
         "type": f"https://github.com/tiff-xt/lobbyd/blob/main/docs/errors.md#{code}",
         "title": HTTPStatus(status).phrase,

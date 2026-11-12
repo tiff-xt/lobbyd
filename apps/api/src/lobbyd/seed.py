@@ -196,9 +196,13 @@ async def _tournaments(
         await inventory.open_inventory(session, await catalog.get_sale_info(session, slug))
 
 
-async def seed(*, tournaments: int, random_seed: int, reset: bool) -> None:
+async def seed(
+    *, tournaments: int, random_seed: int, reset: bool, hosted_demo: bool = False
+) -> None:
+    """`hosted_demo` is for the public demo, which runs with production settings
+    and exists to hold exactly this data (see apps/demo)."""
     settings = get_settings()
-    if settings.environment == "production":
+    if settings.environment == "production" and not hosted_demo:
         sys.exit("Refusing to seed a production database.")
 
     engine = create_engine(settings)

@@ -20,6 +20,12 @@ dependencies = [
     "tzdata>=2024.2",
     "httpx>=0.28",
     "cryptography>=44",
+    "prometheus-client>=0.21",
+    "opentelemetry-sdk>=1.29",
+    "opentelemetry-exporter-otlp-proto-http>=1.29",
+    "opentelemetry-instrumentation-fastapi>=0.50b0",
+    "opentelemetry-instrumentation-redis>=0.50b0",
+    "opentelemetry-instrumentation-httpx>=0.50b0",
 ]
 
 [project.scripts]

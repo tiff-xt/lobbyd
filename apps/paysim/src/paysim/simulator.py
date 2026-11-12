@@ -85,6 +85,7 @@ class Simulator:
         self.http = http
         self.payments: dict[str, Payment] = {}
         self._by_key: dict[str, str] = {}
+        self._traces: dict[str, str] = {}
         self._queue: list[Scheduled] = []
         self._sequence = 0
         self._wake = asyncio.Event()
@@ -92,7 +93,14 @@ class Simulator:
     # --- API ---------------------------------------------------------------
 
     def create_payment(
-        self, *, key: str, reference: str, amount_cents: int, currency: str, method: str
+        self,
+        *,
+        key: str,
+        reference: str,
+        amount_cents: int,
+        currency: str,
+        method: str,
+        traceparent: str | None = None,
     ) -> Payment:
         if key in self._by_key:  # a retried request gets the payment it already made
             return self.payments[self._by_key[key]]
@@ -102,6 +110,8 @@ class Simulator:
         payment = Payment(f"pay_{secrets.token_hex(8)}", reference, amount_cents, currency, method)
         self.payments[payment.id] = payment
         self._by_key[key] = payment.id
+        if traceparent:
+            self._traces[payment.id] = traceparent
 
         delay = self.settings.delay_ms / 1000
         outcome = "failed" if method == "pm_declined" else "succeeded"
@@ -213,7 +223,11 @@ class Simulator:
             response = await self.http.post(
                 self.settings.webhook_url,
                 content=body,
-                headers={HEADER: signature, "Content-Type": "application/json"},
+                headers={
+                    HEADER: signature,
+                    "Content-Type": "application/json",
+                    **({"traceparent": trace} if (trace := self._traces.get(payment.id)) else {}),
+                },
             )
             delivered = response.status_code < 300
         except httpx.HTTPError:

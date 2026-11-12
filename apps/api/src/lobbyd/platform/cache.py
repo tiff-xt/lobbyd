@@ -34,6 +34,8 @@ def get_redis(request: Request) -> Redis:
 RedisDep = Annotated[Redis, Depends(get_redis)]
 
 
+from lobbyd.platform import metrics  # noqa: E402
+
 # --- read-through cache ----------------------------------------------------------
 
 # Flipped by settings at startup. Off only when measuring what the cache is worth.
@@ -91,6 +93,7 @@ async def cached(
     except RedisError:
         # Redis failed at some point along the way. Slower, never wrong.
         stats.errors += 1
+        metrics.CACHE_LOOKUPS.labels("error").inc()
         return await load()
 
 
@@ -106,15 +109,19 @@ async def _cached(
         fresh_until, _, value = raw.partition("|")
         if time.time() < float(fresh_until):
             stats.hits += 1
+            metrics.CACHE_LOOKUPS.labels("hit").inc()
             return value
         # Past its fresh time. Whoever gets the lock refreshes; everyone
         # else is served the old value immediately.
         if not await _try_lock(redis, key):
             stats.stale += 1
+            metrics.CACHE_LOOKUPS.labels("stale").inc()
             return value
         return await _rebuild(redis, key, load, fresh_seconds, stale_seconds)
 
     stats.misses += 1
+
+    metrics.CACHE_LOOKUPS.labels("miss").inc()
     if await _try_lock(redis, key):
         return await _rebuild(redis, key, load, fresh_seconds, stale_seconds)
     # Someone else is building it. Wait for their result instead of
@@ -162,3 +169,4 @@ async def invalidate(redis: Redis, *keys: str) -> None:
             await redis.delete(*keys)
     except RedisError:
         stats.errors += 1
+        metrics.CACHE_LOOKUPS.labels("error").inc()

@@ -9,6 +9,8 @@ import structlog
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from lobbyd.platform import metrics, tracing
+
 REQUEST_ID_HEADER = "X-Request-ID"
 # Accept a caller's id only if it is short and plain, so it is safe to log and echo.
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
@@ -21,6 +23,7 @@ def configure_logging(*, json: bool) -> None:
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
+            tracing.add_trace_id,
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
             structlog.processors.StackInfoRenderer(),
@@ -55,6 +58,7 @@ class RequestContextMiddleware:
 
         status = 500
         started = time.perf_counter()
+        metrics.HTTP_IN_FLIGHT.inc()
 
         async def send_with_id(message: Message) -> None:
             nonlocal status
@@ -66,10 +70,19 @@ class RequestContextMiddleware:
         try:
             await self.app(scope, receive, send_with_id)
         finally:
-            self.log.info(
-                "request",
-                method=scope["method"],
-                path=scope["path"],
-                status=status,
-                duration_ms=round((time.perf_counter() - started) * 1000, 1),
-            )
+            elapsed = time.perf_counter() - started
+            metrics.HTTP_IN_FLIGHT.dec()
+            # The route's template, set by the router once it has matched.
+            # Paths that match nothing share one label, so a scanner probing
+            # random URLs cannot create a series per URL.
+            route = getattr(scope.get("route"), "path", "unmatched")
+            if route != "/metrics":
+                metrics.HTTP_REQUESTS.labels(scope["method"], route, str(status)).inc()
+                metrics.HTTP_DURATION.labels(scope["method"], route).observe(elapsed)
+                self.log.info(
+                    "request",
+                    method=scope["method"],
+                    path=scope["path"],
+                    status=status,
+                    duration_ms=round(elapsed * 1000, 1),
+                )

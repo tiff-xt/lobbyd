@@ -9,6 +9,7 @@ message cannot block the rest or retry forever.
 
 import asyncio
 import json
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -20,6 +21,7 @@ from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lobbyd.config import Settings
+from lobbyd.platform import metrics, tracing
 from lobbyd.platform.outbox import STREAM
 
 log = structlog.get_logger()
@@ -99,21 +101,30 @@ async def consume_once(ctx: EventContext, *, count: int = 50, block_ms: int | No
 async def _handle(ctx: EventContext, message_id: str, fields: dict[str, str]) -> bool:
     topic, event_id = fields["topic"], fields["id"]
     structlog.contextvars.bind_contextvars(event_id=event_id, topic=topic)
+    carrier = json.loads(fields["trace"]) if "trace" in fields else None
+    started = time.perf_counter()
+    outcome = "ok"
     try:
-        payload = json.loads(fields["payload"])
-        for handler in _handlers.get(topic, []):
-            await handler(ctx, payload)
+        # A span that continues the trace of the request that emitted the event.
+        with tracing.continued(f"handle {topic}", carrier, **{"messaging.message.id": event_id}):
+            payload = json.loads(fields["payload"])
+            for handler in _handlers.get(topic, []):
+                await handler(ctx, payload)
     except Exception:
         attempts = await ctx.redis.hincrby(_ATTEMPTS, message_id, 1)
         if attempts < ctx.settings.event_max_attempts:
             # Leave it pending. It is retried once it has been idle long enough.
             log.warning("event_failed", attempt=attempts, exc_info=True)
+            metrics.EVENTS_HANDLED.labels(topic, "retry").inc()
             return False
         log.error("event_dead_lettered", attempts=attempts, exc_info=True)
+        outcome = "dead"
         dead: dict[Any, Any] = {**fields, "attempts": str(attempts)}
         await ctx.redis.xadd(DEAD_LETTER_STREAM, dead)
     finally:
+        metrics.EVENT_DURATION.labels(topic).observe(time.perf_counter() - started)
         structlog.contextvars.unbind_contextvars("event_id", "topic")
+    metrics.EVENTS_HANDLED.labels(topic, outcome).inc()
 
     # Reached on success, and after dead-lettering.
     pipeline = ctx.redis.pipeline(transaction=False)
