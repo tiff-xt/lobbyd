@@ -4,7 +4,7 @@ Ticketing and registration backend for gaming tournaments and LAN events. FastAP
 
 Teams register for a limited number of competitor slots, spectators pick seats from a venue map, everyone pays, and tickets are scanned at the door. Popular tournaments sell out in seconds, so the interesting part is staying correct and fast when thousands of people want the same seats at once.
 
-> **Status: phase 3 of 9 complete.** You can browse tournaments, hold seats and tickets, check out, and receive tickets, and it stays correct with hundreds of buyers competing for the same seats at once. Payment is a stub that always succeeds; real payment flows are phase 4. The [roadmap](docs/roadmap.md) tracks progress.
+> **Status: phase 4 of 9 complete.** Browse, hold, pay, and receive tickets, with payments that behave like a real provider's: asynchronous, confirmed by signed webhooks, and sometimes late, duplicated, out of order, or silent. Next is performance under load (caching, rate limits, the waiting room, benchmarks).
 
 ## Why this project exists
 
@@ -25,7 +25,7 @@ Teams register for a limited number of competitor slots, spectators pick seats f
 
 | Area | Tools |
 | --- | --- |
-| Backend | Python, FastAPI, SQLAlchemy 2 (async) with asyncpg, Alembic, arq workers |
+| Backend | Python, FastAPI, SQLAlchemy 2 (async) with asyncpg, Alembic, workers on Redis Streams |
 | Data | Postgres, Redis |
 | Demo client | Next.js, React, TypeScript, Tailwind CSS, TanStack Query, types generated from the API's OpenAPI document |
 | Testing | pytest against a real Postgres and Redis, Locust for load tests |
@@ -43,7 +43,29 @@ The short version, with the details in [ADR 0002](docs/adr/0002-claiming-invento
 4. **The database refuses to oversell.** Constraints make an oversold counter or a second ticket for one seat impossible to store, whatever the application does.
 5. **Retries are safe.** Every booking request carries an idempotency key; sending it twice returns the first answer and does nothing more.
 
-The tests fire up to 400 simultaneous buyers at one sale and then check 13 statements that must hold across the tables. Each safeguard was also deleted on purpose to confirm the tests fail without it.
+The tests fire up to 400 simultaneous buyers at one sale and then check 21 statements that must hold across the tables ([`reconcile.py`](apps/api/src/lobbyd/reconcile.py)). Each safeguard was also deleted on purpose to confirm the tests fail without it.
+
+## How payments stay correct
+
+Details in ADRs [0003](docs/adr/0003-idempotency-keys.md) and [0004](docs/adr/0004-transactional-outbox.md).
+
+1. **Checkout never waits on the provider.** It records a pending order and an event in one transaction and returns. A worker makes the provider call, so no database transaction is ever open across a network request, and checkout works while the provider is down.
+2. **Events cannot be lost.** They are written in the same transaction as the change they describe (the outbox), then relayed. Delivery is at least once, so every handler is safe to run twice.
+3. **A payment only moves forward.** Each status change is allowed only from specific earlier statuses. A webhook that arrives twice, late, or out of order finds nothing to change.
+4. **Webhooks are verified** by HMAC signature over a timestamp and the body, compared in constant time, with old timestamps refused.
+5. **Webhooks are not trusted to arrive.** Payments that go quiet are looked up at the provider.
+6. **Nobody pays for nothing.** If payment lands after the seats went to someone else, the second buyer keeps them and the first is refunded automatically.
+
+Try the failure modes yourself with the `payment_method` field of `POST /orders`:
+
+| Method | What the simulated provider does |
+| --- | --- |
+| `pm_success` | Pays after about 1.5 seconds |
+| `pm_declined` | Refuses. The order is cancelled and the inventory goes straight back on sale |
+| `pm_duplicate` | Pays, and sends the confirmation twice |
+| `pm_reordered` | Pays, and sends "succeeded" before "processing" |
+| `pm_slow` | Pays after 20 seconds |
+| `pm_never` | Pays, and never tells us. Found by polling after a minute |
 
 ## Running it
 
@@ -69,6 +91,8 @@ uv sync                                 # Python dependencies for the whole work
 docker compose up -d postgres redis     # just the data stores
 npx nx migrate api                      # apply database migrations
 npx nx serve api                        # API with reload on http://localhost:8000
+npx nx serve paysim                     # payment simulator on http://localhost:8001
+cd apps/api && uv run lobbyd-worker     # background work (payments, emails, housekeeping)
 ```
 
 | Command | What it does |
@@ -94,9 +118,13 @@ apps/api/            FastAPI application
     inventory/       availability, holds, the claim logic
     orders/          checkout
     tickets/         issued tickets
-    worker.py        housekeeping loop (closes lapsed holds)
+    payments/        payment records, provider client, webhook signatures
+    notifications/   emails to buyers (recorded, not sent)
+    worker.py        outbox relay, event handlers, housekeeping
+    reconcile.py     cross-table consistency checks
   migrations/        Alembic migrations (the schema's source of truth)
   tests/
+apps/paysim/         payment provider simulator (separate service)
 docs/                design, data model, decision records, roadmap
 ops/                 local infrastructure config
 ```

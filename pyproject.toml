@@ -4,16 +4,17 @@ version = "0.0.0"
 description = "uv workspace root for lobbyd. Not a package."
 requires-python = ">=3.13"
 # Depending on every member means a plain `uv sync` installs the whole workspace.
-dependencies = ["lobbyd"]
+dependencies = ["lobbyd", "paysim"]
 
 [tool.uv]
 package = false
 
 [tool.uv.sources]
 lobbyd = { workspace = true }
+paysim = { workspace = true }
 
 [tool.uv.workspace]
-members = ["apps/api"]
+members = ["apps/api", "apps/paysim"]
 
 [dependency-groups]
 dev = [
@@ -45,4 +46,4 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["lobbyd"]
+known-first-party = ["lobbyd", "paysim"]

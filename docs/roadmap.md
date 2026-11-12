@@ -8,7 +8,7 @@ Each phase ends with something that runs and is tested. A phase is done when its
 | 1 | Foundations | Done |
 | 2 | Catalog | Done |
 | 3 | Booking core | Done |
-| 4 | Payments and reliability | Not started |
+| 4 | Payments and reliability | Done |
 | 5 | Performance under load | Not started |
 | 6 | Teams and waitlist | Not started |
 | 7 | Check-in and live brackets | Not started |
@@ -39,7 +39,7 @@ Holds for reserved seats and counted inventory ([ADR 0002](adr/0002-claiming-inv
 
 ## Phase 4. Payments and reliability
 
-Payment simulator service with signed webhooks and fault injection (delay, duplicate, reorder, fail), webhook handling, order state machine including late-payment refunds, transactional outbox and relay ([ADR 0004](adr/0004-transactional-outbox.md)), arq workers, idempotent consumers, dead-letter handling, confirmation email (logged, not sent), reconciliation job that checks cross-table invariants.
+Payment simulator service with signed webhooks and fault injection (delay, duplicate, reorder, fail), webhook handling, order state machine including late-payment refunds, transactional outbox and relay ([ADR 0004](adr/0004-transactional-outbox.md)), workers consuming a Redis stream, idempotent consumers, dead-letter handling, confirmation email (logged, not sent), reconciliation job that checks cross-table invariants.
 
 **Done when:** a test suite drives the simulator through every fault and the system ends in a correct state each time; killing the relay or a worker mid-run loses nothing.
 

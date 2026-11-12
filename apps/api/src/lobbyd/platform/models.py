@@ -9,10 +9,13 @@ from importlib import import_module
 
 _MODEL_MODULES = (
     "lobbyd.platform.idempotency",
+    "lobbyd.platform.outbox",
     "lobbyd.identity.models",
     "lobbyd.catalog.models",
     "lobbyd.inventory.models",
     "lobbyd.tickets.models",
+    "lobbyd.payments.models",
+    "lobbyd.notifications.models",
     "lobbyd.orders.models",
 )
 

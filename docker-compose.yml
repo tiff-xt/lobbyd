@@ -37,6 +37,7 @@ services:
     environment: &api-env
       LOBBYD_DATABASE_URL: postgresql+asyncpg://lobbyd:lobbyd@postgres:5432/lobbyd
       LOBBYD_REDIS_URL: redis://redis:6379/0
+      LOBBYD_PAYSIM_URL: http://paysim:8001
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -53,13 +54,24 @@ services:
       timeout: 3s
       retries: 10
 
-  # Housekeeping: closes lapsed holds and returns their inventory promptly.
+  # Relays the outbox, runs event handlers (payments, emails), and housekeeping.
+  # Safe to scale: docker compose up --scale worker=3
   worker:
     build: *api-build
     command: ["lobbyd-worker"]
     environment: *api-env
     depends_on:
       migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  # Stand-in payment provider. Takes about 1.5 s to settle a payment, then
+  # calls the API's webhook.
+  paysim:
+    build: *api-build
+    command: ["uvicorn", "paysim.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      PAYSIM_WEBHOOK_URL: http://api:8000/webhooks/payments
+    ports: ["8001:8001"]
 
 volumes:
   pgdata:

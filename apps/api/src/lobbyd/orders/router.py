@@ -5,9 +5,11 @@ import uuid
 from fastapi import APIRouter, Request, Response, status
 
 from lobbyd.identity.deps import CurrentUser
-from lobbyd.orders import service
+from lobbyd.orders import payment_flow, service
 from lobbyd.orders.schemas import OrderCreate, OrderOut
+from lobbyd.payments.provider import SIGNATURE_HEADER
 from lobbyd.platform.db import SessionDep
+from lobbyd.platform.deps import SettingsDep
 from lobbyd.platform.idempotency import IdempotencyKeyHeader, run_idempotent
 
 router = APIRouter()
@@ -18,13 +20,19 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     response_model=OrderOut,
     tags=["booking"],
-    summary="Check out a hold: pay and receive tickets",
-    description="Retry safely with the same Idempotency-Key: you are never charged twice.",
+    summary="Check out a hold",
+    description=(
+        "Returns at once with the order `pending`. Payment completes in the background: "
+        "fetch the order again until its status is `paid` (tickets attached), `cancelled` "
+        "(payment refused), or `expired`. Retry safely with the same Idempotency-Key: you "
+        "are never charged twice."
+    ),
 )
 async def place_order(
     body: OrderCreate,
     request: Request,
     session: SessionDep,
+    settings: SettingsDep,
     user: CurrentUser,
     key: IdempotencyKeyHeader,
 ) -> Response:
@@ -35,7 +43,9 @@ async def place_order(
         key=key,
         body=body,
         success_status=status.HTTP_201_CREATED,
-        work=lambda: service.place_order(session, user.id, body.hold_id),
+        work=lambda: service.place_order(
+            session, settings, user.id, body.hold_id, body.payment_method
+        ),
     )
 
 
@@ -47,3 +57,21 @@ async def get_order(order_id: uuid.UUID, session: SessionDep, user: CurrentUser)
 @router.get("/users/me/orders", tags=["booking"], summary="My orders, newest first")
 async def list_my_orders(session: SessionDep, user: CurrentUser) -> list[OrderOut]:
     return await service.list_orders(session, user.id)
+
+
+@router.post(
+    "/webhooks/payments",
+    tags=["webhooks"],
+    summary="Payment provider callbacks",
+    description="Signed by the provider. Safe to deliver more than once and in any order.",
+)
+async def payment_webhook(
+    request: Request, session: SessionDep, settings: SettingsDep
+) -> dict[str, bool]:
+    await payment_flow.handle_webhook(
+        session,
+        settings,
+        signature=request.headers.get(SIGNATURE_HEADER),
+        body=await request.body(),
+    )
+    return {"received": True}

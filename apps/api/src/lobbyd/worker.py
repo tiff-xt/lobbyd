@@ -1,32 +1,47 @@
-"""Background housekeeping: `lobbyd-worker`.
+"""Background work: `lobbyd-worker`.
 
-Nothing here is needed for correctness. A lapsed hold's seats are claimable
-the moment its time is up, and counters are reclaimed on demand. This loop
-keeps the stored state tidy and returns counted inventory promptly. Phase 4
-replaces it with a proper job queue.
+Three loops in one process:
+
+- relay:        outbox table -> Redis stream
+- consume:      Redis stream -> handlers (provider calls, emails)
+- housekeeping: close lapsed holds and stale orders, poll the provider for
+                payments that have gone quiet, prune, and reconcile
+
+Any number of workers can run side by side. Every query that picks up work
+uses SKIP LOCKED, and stream consumers share a group.
 """
 
 import asyncio
 import contextlib
 import signal
+from collections.abc import Awaitable, Callable
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from lobbyd import reconcile
 from lobbyd.config import get_settings
 from lobbyd.inventory import service as inventory
-from lobbyd.platform import idempotency
+from lobbyd.orders import payment_flow
+from lobbyd.orders import service as orders
+from lobbyd.payments.provider import PaysimProvider
+from lobbyd.platform import events, idempotency, outbox
+from lobbyd.platform.cache import create_redis
 from lobbyd.platform.db import create_engine, create_sessionmaker
+from lobbyd.platform.events import EventContext
 from lobbyd.platform.logging import configure_logging
+from lobbyd.wiring import wire_modules
 
 log = structlog.get_logger()
 
+RELAY_IDLE_SECONDS = 0.25
+CONSUME_BLOCK_MS = 1000
 SWEEP_EVERY_SECONDS = 5
-PRUNE_EVERY_SECONDS = 3600
+SLOW_EVERY_SECONDS = 300
 
 
 async def sweep(sessionmaker: async_sessionmaker[AsyncSession]) -> tuple[int, int]:
-    """One pass. Small batches in their own transactions, so locks are short."""
+    """Close lapsed holds and tidy their seats. Small batches, short transactions."""
     expired = freed = 0
     while True:
         async with sessionmaker.begin() as session:
@@ -43,37 +58,94 @@ async def sweep(sessionmaker: async_sessionmaker[AsyncSession]) -> tuple[int, in
     return expired, freed
 
 
+async def _relay(ctx: EventContext) -> None:
+    published = await outbox.relay_once(ctx.sessionmaker, ctx.redis)
+    if published == 0:
+        await asyncio.sleep(RELAY_IDLE_SECONDS)
+
+
+async def _consume(ctx: EventContext) -> None:
+    await events.consume_once(ctx, block_ms=CONSUME_BLOCK_MS)
+
+
+class _Housekeeping:
+    def __init__(self) -> None:
+        self.since_slow = SLOW_EVERY_SECONDS  # run the slow jobs on the first pass
+
+    async def __call__(self, ctx: EventContext) -> None:
+        expired, freed = await sweep(ctx.sessionmaker)
+        async with ctx.sessionmaker.begin() as session:
+            stale = await orders.expire_stale_orders(session)
+        moved = await payment_flow.poll_unsettled(ctx.sessionmaker, ctx.provider)
+        if expired or freed or stale or moved:
+            log.info(
+                "housekeeping",
+                holds_expired=expired,
+                seats_freed=freed,
+                orders_expired=stale,
+                payments_polled=moved,
+            )
+
+        if self.since_slow >= SLOW_EVERY_SECONDS:
+            self.since_slow = 0
+            async with ctx.sessionmaker.begin() as session:
+                await idempotency.prune(session)
+                await outbox.prune(session)
+            await events.trim(ctx.redis)
+            async with ctx.sessionmaker() as session:
+                await reconcile.run(session)
+        self.since_slow += SWEEP_EVERY_SECONDS
+        await asyncio.sleep(SWEEP_EVERY_SECONDS)
+
+
+async def _forever(
+    name: str, step: Callable[[EventContext], Awaitable[None]], ctx: EventContext
+) -> None:
+    while True:
+        try:
+            await step(ctx)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # One bad pass must not stop the loop. Whatever it missed is
+            # still in the database or the stream for the next pass.
+            log.exception("worker_loop_failed", loop=name)
+            await asyncio.sleep(1)
+
+
 async def run() -> None:
     settings = get_settings()
     configure_logging(json=settings.log_json)
+    wire_modules()
     engine = create_engine(settings)
-    sessionmaker = create_sessionmaker(engine)
+    ctx = EventContext(
+        sessionmaker=create_sessionmaker(engine),
+        redis=create_redis(settings),
+        settings=settings,
+        provider=PaysimProvider.connect(settings.paysim_url),
+    )
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
 
-    log.info("worker_started")
-    since_prune = PRUNE_EVERY_SECONDS  # prune on the first pass
+    log.info("worker_started", consumer=ctx.consumer)
+    tasks = [
+        asyncio.create_task(_forever("relay", _relay, ctx)),
+        asyncio.create_task(_forever("consume", _consume, ctx)),
+        asyncio.create_task(_forever("housekeeping", _Housekeeping(), ctx)),
+    ]
     try:
-        while not stop.is_set():
-            try:
-                expired, freed = await sweep(sessionmaker)
-                if expired or freed:
-                    log.info("sweep", holds_expired=expired, seats_freed=freed)
-                if since_prune >= PRUNE_EVERY_SECONDS:
-                    async with sessionmaker.begin() as session:
-                        pruned = await idempotency.prune(session)
-                    log.info("idempotency_keys_pruned", count=pruned)
-                    since_prune = 0
-            except Exception:
-                # Keep going: the next pass will pick up whatever this one missed.
-                log.exception("sweep_failed")
-            since_prune += SWEEP_EVERY_SECONDS
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(stop.wait(), timeout=SWEEP_EVERY_SECONDS)
+        await stop.wait()
     finally:
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        await ctx.provider.aclose()
+        await ctx.redis.aclose()
         await engine.dispose()
         log.info("worker_stopped")
 

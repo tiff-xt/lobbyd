@@ -10,14 +10,16 @@ import random
 from collections import Counter
 from typing import Any
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lobbyd.config import Settings
+from lobbyd.orders import payment_flow
 from lobbyd.worker import sweep
-from tests.helpers import Sale, checkout, hold, key, make_buyers, open_sale
-from tests.invariants import assert_invariants
+from tests.helpers import Sale, checkout, hold, key, make_buyers, open_sale, settle, work
+from tests.invariants import assert_invariants, assert_settled
 
 Sessions = async_sessionmaker[AsyncSession]
 
@@ -194,12 +196,13 @@ async def _lapse_all(sessionmaker: Sessions) -> None:
         )
 
 
-async def test_checkout_racing_a_new_claim_for_lapsed_inventory(
-    client: AsyncClient, sessionmaker: Sessions, settings: Settings
+async def test_late_payments_racing_new_claims_for_the_same_inventory(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
 ) -> None:
-    """Forty lapsed holds. At the same instant their owners check out, new
-    buyers claim the same inventory, and the sweeper runs. Each seat and each
-    place must end up with exactly one owner."""
+    """Forty buyers are mid-payment when their holds lapse. At the same
+    instant their payments land, new buyers claim the same inventory, and the
+    sweeper runs. Each seat and each place must end up with exactly one owner,
+    and anyone who paid without getting their seat must be refunded."""
     sale = await open_sale(client, sessionmaker, seats=40, general=40, teams=1)
     old = await make_buyers(sessionmaker, settings, 40)
     new = await make_buyers(sessionmaker, settings, 40)
@@ -208,38 +211,60 @@ async def test_checkout_racing_a_new_claim_for_lapsed_inventory(
         *(hold(client, b, sale, seats=[sale.seat_ids[n]], general=1) for n, b in enumerate(old))
     )
     assert statuses(first) == {201: 40}
+    placed = await asyncio.gather(
+        *(checkout(client, b, r.json()["id"]) for b, r in zip(old, first, strict=True))
+    )
+    assert statuses(placed) == {201: 40}
+    await settle(app, deliver=False)  # payments exist at the provider; no news yet
     await _lapse_all(sessionmaker)
 
     results = await asyncio.gather(
-        *(checkout(client, b, r.json()["id"]) for b, r in zip(old, first, strict=True)),
         *(hold(client, b, sale, seats=[sale.seat_ids[n]], general=1) for n, b in enumerate(new)),
+        settle(app),  # all forty payments succeed now
         sweep(sessionmaker),
         sweep(sessionmaker),
     )
-    checkouts, claims = results[:40], results[40:80]
-    assert set(statuses(checkouts)) <= {201, 409}, statuses(checkouts)
+    claims = results[:40]
     assert set(statuses(claims)) <= {201, 409}, statuses(claims)
+    await settle(app)  # refunds for whoever lost
 
+    orders = [
+        (await client.get(f"/orders/{r.json()['id']}", headers=b)).json()
+        for b, r in zip(old, placed, strict=True)
+    ]
+    assert {o["status"] for o in orders} <= {"paid", "refunded"}, {o["status"] for o in orders}
     for n in range(40):
-        # A seat cannot have gone to both the old owner and the new one.
-        assert not (checkouts[n].status_code == 201 and claims[n].status_code == 201)
-    await assert_invariants(sessionmaker)
+        # A seat cannot have gone to both the old owner and the new one,
+        # and it cannot have gone to neither.
+        assert (orders[n]["status"] == "paid") != (claims[n].status_code == 201), n
+        if orders[n]["status"] == "refunded":
+            assert orders[n]["payment"]["status"] == "refunded"
+            assert orders[n]["tickets"] == []
+    await assert_settled(sessionmaker)
 
     # Everyone who now holds something can still check out.
     winners = [(b, r) for b, r in zip(new, claims, strict=True) if r.status_code == 201]
-    final = await asyncio.gather(*(checkout(client, b, r.json()["id"]) for b, r in winners))
-    assert statuses(final) in ({201: len(winners)}, Counter())
-    await assert_invariants(sessionmaker)
+    await asyncio.gather(*(checkout(client, b, r.json()["id"]) for b, r in winners))
+    await settle(app)
+    await assert_settled(sessionmaker)
+    async with sessionmaker() as session:
+        assert await session.scalar(text("SELECT count(*) FROM orders WHERE status = 'paid'")) == 40
+        assert await session.scalar(text("SELECT count(*) FROM tickets")) == 80
+
+
+METHODS = ["pm_success"] * 6 + ["pm_duplicate", "pm_reordered", "pm_declined", "pm_never"]
 
 
 async def _full_sale(
     client: AsyncClient, sale: Sale, buyers: list[dict[str, str]], rng: random.Random
-) -> tuple[int, int]:
-    """Every buyer tries to hold something, then checks out twice at once."""
+) -> list[str]:
+    """Every buyer tries to hold something, then checks out three times at once.
+    Returns the ids of the orders placed."""
 
-    async def shop(buyer: dict[str, str]) -> tuple[int, int]:
+    async def shop(buyer: dict[str, str]) -> str | None:
         size = rng.randint(1, 3)
         start = rng.randrange(0, len(sale.seat_ids) - size + 1)
+        method = rng.choice(METHODS)
         response = await hold(
             client,
             buyer,
@@ -250,49 +275,64 @@ async def _full_sale(
         )
         assert response.status_code in (201, 409), response.text
         if response.status_code != 201:
-            return 0, 0
+            return None
         same = key()
         # An impatient double submit: one retry with the same key, one without.
         orders = await asyncio.gather(
-            checkout(client, buyer, response.json()["id"], same),
-            checkout(client, buyer, response.json()["id"], same),
-            checkout(client, buyer, response.json()["id"]),
+            checkout(client, buyer, response.json()["id"], same, method),
+            checkout(client, buyer, response.json()["id"], same, method),
+            checkout(client, buyer, response.json()["id"], method=method),
         )
         assert all(o.status_code in (201, 409) for o in orders), [o.text for o in orders]
-        paid = {o.json()["id"] for o in orders if o.status_code == 201}
-        assert len(paid) == 1, "one hold produced more than one order"
-        return 1, len(next(o for o in orders if o.status_code == 201).json()["tickets"])
+        placed = {o.json()["id"] for o in orders if o.status_code == 201}
+        assert len(placed) == 1, "one hold produced more than one order"
+        order_id: str = placed.pop()
+        return order_id
 
     outcomes = await asyncio.gather(*(shop(buyer) for buyer in buyers))
-    return sum(o[0] for o in outcomes), sum(o[1] for o in outcomes)
+    return [order_id for order_id in outcomes if order_id]
 
 
 async def test_a_whole_sale_end_to_end(
-    client: AsyncClient, sessionmaker: Sessions, settings: Settings
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
 ) -> None:
     """400 buyers, 120 seats, 60 standing places, 4 team slots, mixed baskets,
-    double-submitted checkouts, and the sweeper running throughout."""
+    triple-submitted checkouts, payments that succeed, fail, arrive twice,
+    arrive out of order, or never report back, with two workers and the
+    sweeper running throughout."""
     sale = await open_sale(client, sessionmaker, seats=120, general=60, teams=4)
     buyers = await make_buyers(sessionmaker, settings, 400)
 
-    (orders, tickets), *_ = await asyncio.gather(
-        _full_sale(client, sale, buyers, random.Random(3)),
-        sweep(sessionmaker),
-        sweep(sessionmaker),
+    async def workers() -> None:
+        for _ in range(40):
+            await asyncio.gather(work(app), work(app), sweep(sessionmaker))
+            await app.state.simulator.deliver_due(everything=True)
+            await asyncio.sleep(0.01)
+
+    order_ids, _ = await asyncio.gather(
+        _full_sale(client, sale, buyers, random.Random(3)), workers()
     )
-    assert orders > 0
+    assert order_ids
+    await settle(app)
     await assert_invariants(sessionmaker)
 
+    # Payments whose webhook never came are found by asking the provider.
+    await payment_flow.poll_unsettled(sessionmaker, app.state.provider, older_than_seconds=0)
+    await settle(app)
+    await assert_settled(sessionmaker)
+
     async with sessionmaker() as session:
-        stored_orders = await session.scalar(text("SELECT count(*) FROM orders"))
-        stored_tickets = await session.scalar(text("SELECT count(*) FROM tickets"))
+        rows = await session.execute(text("SELECT status, count(*) FROM orders GROUP BY status"))
+        by_status: dict[str, int] = {status: count for status, count in rows}
+        confirmations = await session.scalar(
+            text("SELECT count(*) FROM notifications WHERE kind = 'order_confirmation'")
+        )
         sold_seats = await session.scalar(
             text("SELECT count(*) FROM tournament_seats WHERE status = 'sold'")
         )
-        seated_tickets = await session.scalar(
-            text("SELECT count(*) FROM tickets WHERE seat_id IS NOT NULL")
-        )
-    assert stored_orders == orders
-    assert stored_tickets == tickets
-    assert sold_seats == seated_tickets
+    assert sum(by_status.values()) == len(order_ids)
+    assert set(by_status) <= {"paid", "cancelled"}, by_status
+    assert by_status["paid"] > 0
+    assert by_status["cancelled"] > 0  # the declined cards
+    assert confirmations == by_status["paid"]  # one email each, never two
     assert sold_seats <= 120

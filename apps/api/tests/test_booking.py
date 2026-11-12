@@ -1,5 +1,6 @@
 """Holds, checkout, and tickets: the behaviour one buyer sees."""
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -7,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from lobbyd.catalog.models import Tournament
 from lobbyd.config import Settings
 from lobbyd.worker import sweep
-from tests.helpers import checkout, hold, key, make_buyers, open_sale
-from tests.invariants import assert_invariants
+from tests.helpers import buy, checkout, hold, key, make_buyers, open_sale, settle
+from tests.invariants import assert_invariants, assert_settled
 
 Sessions = async_sessionmaker[AsyncSession]
 
@@ -46,7 +47,7 @@ async def test_publishing_puts_inventory_on_sale(
 
 
 async def test_hold_then_checkout_issues_tickets(
-    client: AsyncClient, sessionmaker: Sessions, settings: Settings
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
 ) -> None:
     sale = await open_sale(client, sessionmaker)
     (buyer,) = await make_buyers(sessionmaker, settings, 1)
@@ -64,10 +65,19 @@ async def test_hold_then_checkout_issues_tickets(
     assert sorted(taken) == sorted(sale.seat_ids[:2])
     assert (await client.get(f"/holds/{held['id']}", headers=buyer)).json() == held
 
-    order = await checkout(client, buyer, held["id"])
-    assert order.status_code == 201, order.text
-    paid = order.json()
+    # Checkout answers at once with the order pending; payment follows.
+    placed = await checkout(client, buyer, held["id"])
+    assert placed.status_code == 201, placed.text
+    assert placed.json()["status"] == "pending"
+    assert placed.json()["tickets"] == []
+    assert placed.json()["payment"] == {"status": "created", "method": "pm_success"}
+    # While paying, the inventory stays theirs.
+    assert await available(client, sale.slug) == {"reserved": 38, "general": 17, "competitor": 3}
+
+    await settle(app)
+    paid = (await client.get(f"/orders/{placed.json()['id']}", headers=buyer)).json()
     assert paid["status"] == "paid"
+    assert paid["payment"] == {"status": "succeeded", "method": "pm_success"}
     assert paid["total_cents"] == held["total_cents"]
     assert paid["paid_at"] is not None
     # One ticket per seat, one per general admission place, one for the team.
@@ -81,7 +91,7 @@ async def test_hold_then_checkout_issues_tickets(
     assert (await client.get(f"/holds/{held['id']}", headers=buyer)).json()["status"] == "converted"
     assert (await client.get(f"/orders/{paid['id']}", headers=buyer)).json() == paid
     assert (await client.get("/users/me/orders", headers=buyer)).json() == [paid]
-    await assert_invariants(sessionmaker)
+    await assert_settled(sessionmaker)
 
 
 async def test_a_hold_is_all_or_nothing(
@@ -113,7 +123,7 @@ async def test_a_hold_is_all_or_nothing(
 
 
 async def test_one_open_hold_per_user_per_tournament(
-    client: AsyncClient, sessionmaker: Sessions, settings: Settings
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
 ) -> None:
     sale = await open_sale(client, sessionmaker)
     other = await open_sale(
@@ -130,7 +140,7 @@ async def test_one_open_hold_per_user_per_tournament(
     assert (await hold(client, buyer, other, seats=other.seat_ids[:1])).status_code == 201
 
     # After checking out, they can come back for more.
-    await checkout(client, buyer, first.json()["id"])
+    assert (await buy(client, app, buyer, first.json()["id"]))["status"] == "paid"
     assert (await hold(client, buyer, sale, seats=sale.seat_ids[1:2])).status_code == 201
 
 
@@ -156,7 +166,7 @@ async def test_releasing_a_hold_puts_everything_back(
 
 
 async def test_lapsed_seats_are_claimable_without_any_sweeper(
-    client: AsyncClient, sessionmaker: Sessions, settings: Settings
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
 ) -> None:
     sale = await open_sale(client, sessionmaker)
     slow, quick = await make_buyers(sessionmaker, settings, 2)
@@ -174,26 +184,57 @@ async def test_lapsed_seats_are_claimable_without_any_sweeper(
     late = await checkout(client, slow, stale["id"])
     assert late.status_code == 409
     assert late.json()["code"] == "hold_expired"
-    assert (await checkout(client, quick, fresh.json()["id"])).status_code == 201
+    assert (await buy(client, app, quick, fresh.json()["id"]))["status"] == "paid"
 
     # When the sweeper does come by, it must not disturb the new owner.
     await sweep(sessionmaker)
-    await assert_invariants(sessionmaker)
+    await assert_settled(sessionmaker)
     assert await available(client, sale.slug) == {"reserved": 38, "general": 20, "competitor": 4}
 
 
-async def test_a_buyer_just_past_the_deadline_keeps_seats_nobody_else_took(
+async def test_checkout_cannot_start_on_a_lapsed_hold(
     client: AsyncClient, sessionmaker: Sessions, settings: Settings
 ) -> None:
     sale = await open_sale(client, sessionmaker)
     (buyer,) = await make_buyers(sessionmaker, settings, 1)
-    held = (await hold(client, buyer, sale, seats=sale.seat_ids[:2], general=2)).json()
+    held = (await hold(client, buyer, sale, seats=sale.seat_ids[:2])).json()
     await lapse(sessionmaker)
 
-    order = await checkout(client, buyer, held["id"])
-    assert order.status_code == 201, order.text
-    assert len(order.json()["tickets"]) == 4
-    await assert_invariants(sessionmaker)
+    late = await checkout(client, buyer, held["id"])
+    assert (late.status_code, late.json()["code"]) == (409, "hold_expired")
+
+
+async def test_starting_checkout_extends_the_hold(
+    client: AsyncClient, sessionmaker: Sessions, settings: Settings
+) -> None:
+    sale = await open_sale(client, sessionmaker)
+    (buyer,) = await make_buyers(sessionmaker, settings, 1)
+    held = (await hold(client, buyer, sale, seats=sale.seat_ids[:2])).json()
+    # Nine and a half of the ten minutes are gone when they press "pay".
+    async with sessionmaker.begin() as session:
+        await session.execute(text("UPDATE holds SET expires_at = now() + interval '30 seconds'"))
+        await session.execute(
+            text(
+                "UPDATE tournament_seats SET held_until = now() + interval '30 seconds' "
+                "WHERE status = 'held'"
+            )
+        )
+
+    assert (await checkout(client, buyer, held["id"])).status_code == 201
+
+    async with sessionmaker() as session:
+        hold_left = await session.scalar(
+            text("SELECT extract(epoch FROM expires_at - now()) FROM holds")
+        )
+        seats_left = await session.scalar(
+            text(
+                "SELECT min(extract(epoch FROM held_until - now())) FROM tournament_seats "
+                "WHERE status = 'held'"
+            )
+        )
+    # Both the hold and its seats now last the payment window (five minutes).
+    assert 290 < hold_left <= 300
+    assert 290 < seats_left <= 300
 
 
 async def test_lapsed_counted_inventory_is_reclaimed_on_demand(
@@ -340,5 +381,6 @@ async def test_holds_and_orders_are_private(
     assert (stolen.status_code, stolen.json()["code"]) == (404, "hold_not_found")
 
     order = (await checkout(client, owner, held["id"])).json()
+    assert (await client.get(f"/orders/{order['id']}", headers=owner)).status_code == 200
     assert (await client.get(f"/orders/{order['id']}", headers=stranger)).status_code == 404
     assert (await client.get("/users/me/orders", headers=stranger)).json() == []

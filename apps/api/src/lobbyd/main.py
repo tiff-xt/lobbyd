@@ -11,6 +11,7 @@ from lobbyd.config import Settings, get_settings
 from lobbyd.identity.router import router as identity_router
 from lobbyd.inventory.router import router as inventory_router
 from lobbyd.orders.router import router as orders_router
+from lobbyd.payments.provider import PaymentProvider, PaysimProvider
 from lobbyd.platform import health
 from lobbyd.platform.cache import create_redis
 from lobbyd.platform.db import create_engine, create_sessionmaker
@@ -23,7 +24,9 @@ from lobbyd.platform.logging import RequestContextMiddleware, configure_logging
 from lobbyd.wiring import wire_modules
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, provider: PaymentProvider | None = None
+) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(json=settings.log_json)
     wire_modules()
@@ -35,10 +38,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = engine
         app.state.sessionmaker = create_sessionmaker(engine)
         app.state.redis = create_redis(settings)
+        app.state.provider = provider or PaysimProvider.connect(settings.paysim_url)
         try:
             yield
         finally:
             await app.state.redis.aclose()
+            if provider is None:
+                await app.state.provider.aclose()
             await engine.dispose()
 
     app = FastAPI(

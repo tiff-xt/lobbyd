@@ -1,5 +1,8 @@
 # Build context is the repository root (the uv workspace lives there):
 #   docker build -f apps/api/Dockerfile .
+#
+# One image for the whole workspace. The API, the worker, and the payment
+# simulator run from it with different commands (see docker-compose.yml).
 
 FROM python:3.13-slim AS build
 COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /usr/local/bin/uv
@@ -9,10 +12,12 @@ WORKDIR /workspace
 # Dependencies first: this layer is reused until a lockfile changes.
 COPY pyproject.toml uv.lock ./
 COPY apps/api/pyproject.toml apps/api/pyproject.toml
+COPY apps/paysim/pyproject.toml apps/paysim/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-workspace
 
 COPY apps/api apps/api
+COPY apps/paysim apps/paysim
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 

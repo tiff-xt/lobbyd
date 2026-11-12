@@ -1,0 +1,29 @@
+{
+  "name": "paysim",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/paysim/src",
+  "targets": {
+    "serve": {
+      "command": "uv run uvicorn paysim.main:app --reload --port 8001",
+      "options": { "cwd": "apps/paysim" },
+      "continuous": true
+    },
+    "lint": {
+      "command": "uv run ruff check . && uv run ruff format --check .",
+      "options": { "cwd": "apps/paysim" }
+    },
+    "format": {
+      "command": "uv run ruff check --fix . && uv run ruff format .",
+      "options": { "cwd": "apps/paysim" }
+    },
+    "typecheck": {
+      "command": "uv run mypy src tests",
+      "options": { "cwd": "apps/paysim" }
+    },
+    "test": {
+      "command": "uv run pytest",
+      "options": { "cwd": "apps/paysim" }
+    }
+  }
+}

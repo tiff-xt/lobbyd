@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy import insert, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -11,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from lobbyd.config import Settings
 from lobbyd.identity import security
 from lobbyd.identity.models import User
+from lobbyd.platform.events import EventContext, consume_once
 from lobbyd.platform.ids import uuid7
+from lobbyd.platform.outbox import relay_once
 
 PASSWORD = "correct horse battery"
 
@@ -142,6 +145,7 @@ async def open_sale(
     seats: int = 40,
     general: int = 20,
     teams: int = 4,
+    team_price: int = 5000,
     organizer_email: str = "organizer@example.com",
     title: str = "Starfall Open",
 ) -> Sale:
@@ -161,7 +165,7 @@ async def open_sale(
             "section_ids": [venue["sections"][0]["id"]],
         },
         {"kind": "general", "name": "Standing", "price_cents": 1500, "capacity": general},
-        {"kind": "competitor", "name": "Team entry", "price_cents": 5000, "capacity": teams},
+        {"kind": "competitor", "name": "Team entry", "price_cents": team_price, "capacity": teams},
     ):
         added = await client.post(
             f"/tournaments/{slug}/ticket-types", json=ticket_type, headers=headers
@@ -203,7 +207,49 @@ async def checkout(
     buyer: dict[str, str],
     hold_id: str,
     idempotency: dict[str, str] | None = None,
+    method: str = "pm_success",
 ) -> Any:
+    """Start checkout. The order comes back pending; see settle()."""
     return await client.post(
-        "/orders", json={"hold_id": hold_id}, headers={**buyer, **(idempotency or key())}
+        "/orders",
+        json={"hold_id": hold_id, "payment_method": method},
+        headers={**buyer, **(idempotency or key())},
     )
+
+
+async def work(app: FastAPI) -> int:
+    """One pass of what the workers do: relay the outbox, handle events."""
+    events: EventContext = app.state.events
+    return await relay_once(events.sessionmaker, events.redis) + await consume_once(events)
+
+
+async def settle(app: FastAPI, *, deliver: bool = True) -> None:
+    """Run all background work to completion.
+
+    Loops over the outbox relay, the event handlers, and (unless `deliver` is
+    False) the simulator's pending webhooks until a full pass does nothing.
+    With deliver=False, payments get created at the provider but no news about
+    them comes back yet, which lets a test do something in between.
+    """
+    for _ in range(50):
+        done = await work(app)
+        if deliver:
+            done += await app.state.simulator.deliver_due(everything=True)
+        if done == 0:
+            return
+    raise AssertionError("background work did not settle")
+
+
+async def buy(
+    client: AsyncClient,
+    app: FastAPI,
+    buyer: dict[str, str],
+    hold_id: str,
+    method: str = "pm_success",
+) -> Json:
+    """Check out, let the payment finish, and return the order as it ended up."""
+    placed = await checkout(client, buyer, hold_id, method=method)
+    assert placed.status_code == 201, placed.text
+    await settle(app)
+    order: Json = (await client.get(f"/orders/{placed.json()['id']}", headers=buyer)).json()
+    return order

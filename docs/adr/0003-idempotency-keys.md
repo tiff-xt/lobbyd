@@ -1,6 +1,6 @@
 # 0003. Idempotency keys stored in the same transaction as the effect
 
-**Status:** Accepted. Client request keys implemented in phase 3; payment provider parts are phase 4
+**Status:** Accepted and implemented (client keys in phase 3, provider calls and webhooks in phase 4)
 
 ## Context
 
@@ -30,14 +30,27 @@ Keys are scoped to the user, so one user can never be handed another's response 
 
 ### Calls to the payment provider
 
-The order id is sent as the provider's idempotency key, so a retried "create payment" call returns the existing payment.
+Our payment id is sent as the provider's idempotency key, so a retried "create payment" call returns the existing payment. Refunds use `refund-<payment id>` the same way. This is what lets the worker simply retry a provider call that timed out without knowing whether it got through.
 
 ### Webhooks from the payment provider
 
-1. Verify the signature and reject stale timestamps.
-2. Insert the provider's event id into `payment_events` (primary key). A conflict means it was already handled: return `200` and stop.
-3. Apply the state change as a guarded transition, for example `UPDATE orders SET status = 'paid' WHERE id = :id AND status = 'pending'`. Guarded transitions make out-of-order delivery safe: a `failed` event arriving after `succeeded` matches no row and changes nothing.
-4. All of the above in one transaction with the ticket issuing and the outbox write.
+1. Verify the signature: HMAC-SHA256 over `<timestamp>.<body>`, compared in constant time. Reject timestamps older than five minutes, so a captured delivery cannot be replayed later.
+2. Insert the provider's event id into `payment_events` (primary key) with `ON CONFLICT DO NOTHING`. No row back means it was already handled: return `200` and stop.
+3. Apply the change as a **guarded transition**. A payment may only move forward:
+
+   ```
+   created -> processing -> succeeded -> refund_pending -> refunded
+                        \-> failed
+   ```
+
+   A `processing` or `failed` event arriving after `succeeded` matches no allowed step and changes nothing. Orders are guarded the same way under their row lock.
+4. All of the above in one transaction with the order update, ticket issuing, and outbox write.
+
+Steps 2 and 3 are each sufficient to make a duplicate harmless. Both are kept: the event table is also the audit trail, and the guard also covers news that arrives by polling instead of by webhook.
+
+**Finding the payment.** The webhook is matched to a payment by *our* id, which the provider echoes back as its `reference`, not by the provider's id. The worker creates the payment at the provider and then stores the provider's id, and the provider's webhook can win that race. Matching on our own id means it is still recognised.
+
+**Webhooks are the fast path, not the only one.** A payment that has been quiet for a minute is looked up at the provider and the result goes through the same guarded transition. A lost webhook therefore delays an order; it cannot leave a buyer charged with no tickets.
 
 ## Options not taken
 

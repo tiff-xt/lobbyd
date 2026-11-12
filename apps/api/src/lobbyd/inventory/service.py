@@ -24,7 +24,18 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import structlog
-from sqlalchemy import and_, case, func, insert, literal, or_, select, tuple_, update
+from sqlalchemy import (
+    ColumnElement,
+    and_,
+    case,
+    func,
+    insert,
+    literal,
+    or_,
+    select,
+    tuple_,
+    update,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -360,11 +371,21 @@ async def _claim_seats(
 # --- letting go ------------------------------------------------------------------
 
 
-async def release_hold(session: AsyncSession, user_id: uuid.UUID, hold_id: uuid.UUID) -> None:
+async def _lock_hold(
+    session: AsyncSession, hold_id: uuid.UUID, user_id: uuid.UUID | None
+) -> Hold | None:
+    """Lock a hold. With `user_id`, only if it is theirs; without, on the system's behalf."""
+    query = select(Hold).where(Hold.id == hold_id).with_for_update()
+    if user_id is not None:
+        query = query.where(Hold.user_id == user_id)
+    return await session.scalar(query)
+
+
+async def release_hold(
+    session: AsyncSession, hold_id: uuid.UUID, *, user_id: uuid.UUID | None = None
+) -> None:
     """Give a hold back early. Releasing one that is already closed is not an error."""
-    hold = await session.scalar(
-        select(Hold).where(Hold.id == hold_id, Hold.user_id == user_id).with_for_update()
-    )
+    hold = await _lock_hold(session, hold_id, user_id)
     if hold is None:
         raise _hold_not_found()
     if hold.status != "active":
@@ -503,20 +524,70 @@ class PurchasedItem:
 
 
 @dataclass(frozen=True)
-class ConvertedHold:
+class HoldSnapshot:
     hold_id: uuid.UUID
     tournament_id: uuid.UUID
     currency: str
     items: list[PurchasedItem]
 
 
-async def convert_hold(
-    session: AsyncSession, user_id: uuid.UUID, hold_id: uuid.UUID
-) -> ConvertedHold:
-    """Turn a hold into a sale. All of it, or a refusal."""
-    hold = await session.scalar(
-        select(Hold).where(Hold.id == hold_id, Hold.user_id == user_id).with_for_update()
+async def _items(session: AsyncSession, hold_id: uuid.UUID) -> list[PurchasedItem]:
+    rows = await session.execute(
+        select(
+            HoldItem.ticket_type_id, HoldItem.seat_id, HoldItem.quantity, HoldItem.unit_price_cents
+        )
+        .where(HoldItem.hold_id == hold_id)
+        .order_by(HoldItem.id)
     )
+    return [PurchasedItem(*row) for row in rows]
+
+
+def _our_seats(hold: Hold) -> ColumnElement[bool]:
+    return and_(
+        TournamentSeat.tournament_id == hold.tournament_id,
+        TournamentSeat.hold_id == hold.id,
+        TournamentSeat.status == "held",
+    )
+
+
+async def begin_checkout(
+    session: AsyncSession, user_id: uuid.UUID, hold_id: uuid.UUID, *, window_seconds: int
+) -> HoldSnapshot:
+    """Check a hold is good to pay for, and give it time for the payment to finish.
+
+    Without the extension, a buyer who starts paying in the last seconds of
+    their hold could lose the seats while the payment is in flight.
+    """
+    hold = await _lock_hold(session, hold_id, user_id)
+    if hold is None:
+        raise _hold_not_found()
+    if hold.status == "converted":
+        raise ProblemError(409, "hold_already_used", "This hold has already been checked out.")
+    now = await _now(session)
+    if hold.status != "active" or hold.expires_at <= now:
+        raise _hold_expired()
+
+    deadline = max(hold.expires_at, now + timedelta(seconds=window_seconds))
+    if deadline > hold.expires_at:
+        hold.expires_at = deadline
+        ours = _our_seats(hold)
+        await session.execute(
+            select(TournamentSeat.seat_id)
+            .where(ours)
+            .order_by(TournamentSeat.seat_id)
+            .with_for_update()
+        )
+        await session.execute(update(TournamentSeat).where(ours).values(held_until=deadline))
+        await session.flush()
+    return HoldSnapshot(hold.id, hold.tournament_id, hold.currency, await _items(session, hold.id))
+
+
+async def convert_hold(session: AsyncSession, hold_id: uuid.UUID) -> None:
+    """Turn a hold into a sale. All of it, or `hold_expired`.
+
+    Called when payment has succeeded, on the system's behalf.
+    """
+    hold = await _lock_hold(session, hold_id, None)
     if hold is None:
         raise _hold_not_found()
     if hold.status == "converted":
@@ -524,20 +595,7 @@ async def convert_hold(
     if hold.status != "active":
         raise _hold_expired()
 
-    items = [
-        PurchasedItem(*row)
-        for row in await session.execute(
-            select(
-                HoldItem.ticket_type_id,
-                HoldItem.seat_id,
-                HoldItem.quantity,
-                HoldItem.unit_price_cents,
-            )
-            .where(HoldItem.hold_id == hold.id)
-            .order_by(HoldItem.id)
-        )
-    ]
-
+    items = await _items(session, hold.id)
     counted: dict[uuid.UUID, int] = {}
     for item in items:
         if item.seat_id is None:
@@ -554,11 +612,7 @@ async def convert_hold(
 
     seat_count = sum(1 for item in items if item.seat_id is not None)
     if seat_count:
-        ours = and_(
-            TournamentSeat.tournament_id == hold.tournament_id,
-            TournamentSeat.hold_id == hold.id,
-            TournamentSeat.status == "held",
-        )
+        ours = _our_seats(hold)
         await session.execute(
             select(TournamentSeat.seat_id)
             .where(ours)
@@ -572,14 +626,22 @@ async def convert_hold(
             .returning(TournamentSeat.seat_id)
         )
         # The seat rows still pointing at this hold are the proof we still own
-        # them. No clock is consulted: a buyer a moment past the deadline keeps
-        # their seats if nobody else took them. If someone did, sell nothing.
+        # them. No clock is consulted: a payment that lands a moment past the
+        # deadline keeps its seats if nobody else took them. If someone did,
+        # sell nothing.
         if len(sold.all()) != seat_count:
             raise _hold_expired()
 
     hold.status = "converted"
     await session.flush()
-    return ConvertedHold(hold.id, hold.tournament_id, hold.currency, items)
+
+
+async def closed_holds(session: AsyncSession, hold_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    """Which of these holds have lapsed or been released."""
+    rows = await session.scalars(
+        select(Hold.id).where(Hold.id.in_(hold_ids), Hold.status.in_(("expired", "released")))
+    )
+    return set(rows)
 
 
 def _hold_expired() -> ProblemError:

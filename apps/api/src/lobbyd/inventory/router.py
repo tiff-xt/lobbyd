@@ -65,4 +65,4 @@ async def get_hold(hold_id: uuid.UUID, session: SessionDep, user: CurrentUser) -
     summary="Give a hold back early",
 )
 async def release_hold(hold_id: uuid.UUID, session: SessionDep, user: CurrentUser) -> None:
-    await service.release_hold(session, user.id, hold_id)
+    await service.release_hold(session, hold_id, user_id=user.id)

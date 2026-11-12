@@ -227,7 +227,7 @@ CREATE INDEX hold_items_hold_id_idx ON hold_items (hold_id);
 
 ## Orders and tickets
 
-Implemented in phase 3 with payment stubbed (an order is created already paid). The `payments` and `payment_events` tables arrive with real payments in phase 4.
+Orders and tickets were implemented in phase 3, payments in phase 4.
 
 ```sql
 CREATE TABLE orders (
@@ -277,29 +277,51 @@ CREATE INDEX tickets_holder_id_idx ON tickets (holder_id);
 - `unit_price_cents` is copied onto the order item so that changing a ticket type's price later never rewrites history.
 - Checkout moves inventory from held to sold, records the order, and issues the tickets in one transaction.
 
-Planned for phase 4:
+An order is created `pending` when checkout starts. Payment success moves inventory from held to sold, marks the order `paid`, and issues the tickets, in one transaction.
+
+## Payments
 
 ```sql
 CREATE TABLE payments (
     id           uuid PRIMARY KEY,
-    order_id     uuid NOT NULL REFERENCES orders,
-    provider_ref text NOT NULL UNIQUE,             -- the provider's payment id
-    status       text NOT NULL
-                 CHECK (status IN ('created', 'succeeded', 'failed', 'refunded')),
-    amount_cents int  NOT NULL,
+    order_id     uuid NOT NULL UNIQUE,             -- one payment per order
+    provider_ref text UNIQUE,                      -- provider's id; null until it acknowledges
+    method       text NOT NULL,
+    status       text NOT NULL DEFAULT 'created'
+                 CHECK (status IN ('created', 'processing', 'succeeded', 'failed',
+                                   'refund_pending', 'refunded')),
+    amount_cents int  NOT NULL CHECK (amount_cents > 0),
     currency     char(3) NOT NULL,
-    created_at   timestamptz NOT NULL DEFAULT now()
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    updated_at   timestamptz NOT NULL DEFAULT now()
 );
+-- Payments still waiting on the provider, for the status poll.
+CREATE INDEX payments_unsettled_idx ON payments (updated_at)
+    WHERE status IN ('created', 'processing', 'refund_pending');
 
--- Every webhook delivery we have accepted. The unique id is the deduplication.
+-- Every webhook delivery we have accepted. The primary key is the deduplication.
 CREATE TABLE payment_events (
     provider_event_id text PRIMARY KEY,
-    payment_id        uuid REFERENCES payments,
+    payment_id        uuid,
     type              text NOT NULL,
     payload           jsonb NOT NULL,
     received_at       timestamptz NOT NULL DEFAULT now()
 );
+
+-- Emails to buyers. The unique constraint makes sending idempotent.
+CREATE TABLE notifications (
+    id         uuid PRIMARY KEY,
+    user_id    uuid NOT NULL REFERENCES users ON DELETE CASCADE,
+    kind       text NOT NULL,
+    subject_id uuid NOT NULL,                      -- the order it is about
+    payload    jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (kind, subject_id)
+);
 ```
+
+- `provider_ref` is nullable because the provider is contacted by a worker after checkout has returned. Webhooks are matched on our own `id`, which the provider echoes back, so one that arrives before `provider_ref` is stored is still recognised.
+- `payments_unsettled_idx` is partial: it only contains payments in flight, so it stays small however many payments have completed.
 
 ## Teams and waitlist
 
@@ -397,7 +419,7 @@ CREATE TABLE idempotency_keys (                    -- implemented in phase 3
 );
 CREATE INDEX idempotency_keys_created_at_idx ON idempotency_keys (created_at);  -- for pruning
 
-CREATE TABLE outbox (
+CREATE TABLE outbox (                              -- implemented in phase 4
     id           uuid PRIMARY KEY,                 -- UUIDv7, so id order is creation order
     topic        text NOT NULL,
     payload      jsonb NOT NULL,
@@ -412,7 +434,9 @@ Both tables grow without bound and are pruned by a scheduled job (idempotency ke
 
 ## Invariants
 
-These must be true whenever no request is in flight. The concurrency tests check every one of them after every run (`apps/api/tests/invariants.py`), with one query per rule that returns the rows breaking it.
+Twenty-one checks, each a query that returns the rows breaking a rule, live in [`reconcile.py`](../apps/api/src/lobbyd/reconcile.py). The tests run them after every concurrency test. The worker runs them every five minutes and logs an error if any returns a row.
+
+**Always true** (between any two transactions):
 
 1. No counter has held plus sold above its capacity. *(constraint)*
 2. Each counter's `held_count` equals what its active holds add up to, and its `sold_count` equals its number of valid tickets.
@@ -420,10 +444,21 @@ These must be true whenever no request is in flight. The concurrency tests check
 4. Every sold seat has a valid ticket, and every valid seated ticket is for a sold seat.
 5. No held seat belongs to a hold that was checked out or released.
 6. Every active hold that is still in time owns all of its seats.
-7. Every paid order has as many valid tickets as it bought, and its total equals its items.
-8. Every checked-out hold has exactly one order, and no order exists for any other hold. *(one order per hold is a constraint)*
-9. No user has two active holds for one tournament. *(constraint)*
-10. No payment `provider_ref` or webhook event id is recorded twice. *(constraint, phase 4)*
-11. No handle appears on two teams in one tournament. *(constraint, phase 6)*
+7. Every paid order has exactly the tickets it bought, and no unpaid order has any.
+8. Every order's total equals its items, and its payment is for that amount.
+9. Every checked-out hold belongs to exactly one paid order, and every paid order's hold is checked out. *(one order per hold is a constraint)*
+10. Every paid order that cost money has a succeeded payment.
+11. No user has two active holds for one tournament. *(constraint)*
+12. No provider event id is recorded twice, and no order has two payments. *(constraints)*
 
-Rules marked as constraints cannot be broken by any code path. The others span tables, so they are upheld by doing the work in one transaction and verified by the tests; phase 4 adds a reconciliation job that runs the same queries in production.
+**True once background work has caught up** (reported only when a row has been wrong for 15 minutes):
+
+13. Nobody has been charged for an order that is not paid, unless a refund is under way.
+14. No order is pending on a hold that has closed.
+15. No payment or refund is still waiting on the provider.
+16. No event is sitting unpublished in the outbox.
+17. Every paid order has a confirmation.
+
+Rules marked as constraints cannot be broken by any code path. The others span tables, so they are upheld by doing the work in one transaction and verified by these checks.
+
+Planned: no handle appears on two teams in one tournament *(constraint, phase 6)*.

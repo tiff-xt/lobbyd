@@ -77,7 +77,7 @@ flowchart LR
     client[Web client / scanner app]
     subgraph lobbyd
         api[API<br/>FastAPI, stateless, N instances]
-        worker[Workers<br/>arq]
+        worker[Workers]
         relay[Outbox relay]
     end
     pg[(Postgres<br/>source of truth)]

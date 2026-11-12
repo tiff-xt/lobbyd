@@ -18,6 +18,7 @@ dependencies = [
     "pyjwt>=2.10",
     "structlog>=24.4",
     "tzdata>=2024.2",
+    "httpx>=0.28",
 ]
 
 [project.scripts]
@@ -46,9 +47,9 @@ name = "modules depend only on the layers beneath them"
 type = "layers"
 layers = [
     "lobbyd.main | lobbyd.seed | lobbyd.cli | lobbyd.worker",
-    "lobbyd.wiring",
+    "lobbyd.wiring | lobbyd.reconcile",
     "lobbyd.orders",
-    "lobbyd.inventory | lobbyd.tickets",
+    "lobbyd.inventory | lobbyd.tickets | lobbyd.payments | lobbyd.notifications",
     "lobbyd.catalog",
     "lobbyd.identity",
     "lobbyd.platform",

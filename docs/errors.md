@@ -53,6 +53,8 @@ Every error response is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) pr
 | <a id="sold_out"></a>`sold_out` | 409 | Not enough left of a counted ticket type. `ticket_type_id` says which. Nothing was held. |
 | <a id="hold_exists"></a>`hold_exists` | 409 | You already have an open hold for this tournament. Check out or release it first. `hold_id` identifies it when known. |
 | <a id="hold_expired"></a>`hold_expired` | 409 | The hold ran out or was released, and its inventory went back on sale. |
-| <a id="hold_already_used"></a>`hold_already_used` | 409 | The hold has already been checked out. |
+| <a id="hold_already_used"></a>`hold_already_used` | 409 | Checkout has already started for this hold. `order_id` identifies the order when known. |
 | <a id="sales_not_open"></a>`sales_not_open` | 409 | Sales have not opened yet. `opens_at` says when. |
 | <a id="sales_closed"></a>`sales_closed` | 409 | The tournament has ended or is cancelled. |
+| <a id="invalid_signature"></a>`invalid_signature` | 400 | A webhook's signature is missing, wrong, or too old. |
+| <a id="invalid_webhook"></a>`invalid_webhook` | 400 | A correctly signed webhook whose body could not be understood. |
