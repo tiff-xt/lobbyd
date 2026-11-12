@@ -33,6 +33,7 @@ log = structlog.get_logger()
 
 METHODS = ("pm_success", "pm_declined", "pm_duplicate", "pm_reordered", "pm_slow", "pm_never")
 MAX_DELIVERY_ATTEMPTS = 6
+DELIVERY_CONCURRENCY = 32
 
 
 class Settings(BaseSettings):
@@ -155,14 +156,33 @@ class Simulator:
         self._wake.set()
         return event_id
 
-    async def deliver_due(self, *, everything: bool = False) -> int:
-        """Fire events that are due (or all of them, in order). Returns how many fired."""
-        fired = 0
+    async def deliver_due(self, *, everything: bool = False, concurrency: int = 1) -> int:
+        """Fire events that are due (or all of them). Returns how many fired.
+
+        One at a time by default, which gives tests an exact order. The
+        background loop passes a higher `concurrency`: a real provider does
+        not wait for one merchant response before sending the next webhook,
+        and a simulator that did would become the slowest part of any load
+        test (it was: a minute-long backlog at a few dozen payments a second).
+        """
+        if concurrency <= 1:
+            fired = 0
+            while self._queue and (everything or self._queue[0].due <= time.monotonic()):
+                await self._fire(heapq.heappop(self._queue))
+                fired += 1
+            return fired
+
+        due = []
         while self._queue and (everything or self._queue[0].due <= time.monotonic()):
-            event = heapq.heappop(self._queue)
-            await self._fire(event)
-            fired += 1
-        return fired
+            due.append(heapq.heappop(self._queue))
+        gate = asyncio.Semaphore(concurrency)
+
+        async def fire(event: Scheduled) -> None:
+            async with gate:
+                await self._fire(event)
+
+        await asyncio.gather(*(fire(event) for event in due))
+        return len(due)
 
     async def _fire(self, event: Scheduled) -> None:
         payment = self.payments[event.payment_id]
@@ -215,7 +235,7 @@ class Simulator:
     async def run(self) -> None:
         """Deliver events as they come due, forever."""
         while True:
-            await self.deliver_due()
+            await self.deliver_due(concurrency=DELIVERY_CONCURRENCY)
             self._wake.clear()
             timeout = max(0.0, self._queue[0].due - time.monotonic()) if self._queue else None
             try:

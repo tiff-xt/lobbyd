@@ -6,90 +6,90 @@
   "settings": {},
   "requests": {
     "GET availability": {
-      "count": 6158,
+      "count": 6195,
       "failures": 0,
       "p50_ms": 3.0,
       "p95_ms": 13.0,
-      "p99_ms": 30.0,
-      "per_second": 104.2
+      "p99_ms": 33.0,
+      "per_second": 104.9
     },
     "GET order": {
-      "count": 743,
+      "count": 696,
       "failures": 0,
-      "p50_ms": 21.0,
-      "p95_ms": 51.0,
-      "p99_ms": 96.0,
-      "per_second": 12.6
+      "p50_ms": 19.0,
+      "p95_ms": 69.0,
+      "p99_ms": 120.0,
+      "per_second": 11.8
     },
     "GET seat map": {
       "count": 400,
       "failures": 0,
       "p50_ms": 9.0,
-      "p95_ms": 25.0,
-      "p99_ms": 34.0,
+      "p95_ms": 17.0,
+      "p99_ms": 26.0,
       "per_second": 6.8
     },
     "GET tournament": {
       "count": 400,
       "failures": 0,
-      "p50_ms": 17.0,
-      "p95_ms": 41.0,
-      "p99_ms": 110.0,
+      "p50_ms": 18.0,
+      "p95_ms": 48.0,
+      "p99_ms": 100.0,
       "per_second": 6.8
     },
     "POST holds": {
-      "count": 406,
+      "count": 401,
       "failures": 0,
-      "p50_ms": 73.0,
+      "p50_ms": 75.0,
       "p95_ms": 170.0,
-      "p99_ms": 210.0,
-      "per_second": 6.9
+      "p99_ms": 240.0,
+      "per_second": 6.8
     },
     "POST orders": {
       "count": 400,
       "failures": 0,
-      "p50_ms": 76.0,
-      "p95_ms": 160.0,
-      "p99_ms": 220.0,
+      "p50_ms": 74.0,
+      "p95_ms": 170.0,
+      "p99_ms": 250.0,
       "per_second": 6.8
     },
     "POST queue": {
       "count": 400,
       "failures": 0,
       "p50_ms": 24.0,
-      "p95_ms": 92.0,
-      "p99_ms": 130.0,
+      "p95_ms": 70.0,
+      "p99_ms": 140.0,
       "per_second": 6.8
     },
     "page open to seats held": {
       "count": 400,
       "failures": 0,
       "p50_ms": 140.0,
-      "p95_ms": 320.0,
-      "p99_ms": 450.0,
+      "p95_ms": 300.0,
+      "p99_ms": 520.0,
       "per_second": 6.8
     },
     "page open to tickets": {
       "count": 400,
       "failures": 0,
       "p50_ms": 1500.0,
-      "p95_ms": 1700.0,
-      "p99_ms": 2200.0,
+      "p95_ms": 1800.0,
+      "p99_ms": 2000.0,
       "per_second": 6.8
     },
     "Aggregated": {
-      "count": 9707,
+      "count": 9692,
       "failures": 0,
       "p50_ms": 4.0,
       "p95_ms": 210.0,
       "p99_ms": 1600.0,
-      "per_second": 164.3
+      "per_second": 164.0
     }
   },
   "outcomes": {
     "hold won": 400,
-    "hold refused": 6,
-    "order paid": 400
+    "order paid": 400,
+    "hold refused": 1
   },
   "seats_sold": 800,
   "seats_total": 2000,

@@ -34,7 +34,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        client = http or httpx.AsyncClient(timeout=5)
+        client = http or httpx.AsyncClient(
+            timeout=10, limits=httpx.Limits(max_connections=64, max_keepalive_connections=32)
+        )
         app.state.simulator = Simulator(settings, client)
         task = asyncio.create_task(app.state.simulator.run()) if background_delivery else None
         try:

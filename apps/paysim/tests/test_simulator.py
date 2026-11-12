@@ -223,3 +223,24 @@ async def test_delivery_is_abandoned_after_enough_failures(
     assert await simulator.deliver_due(everything=True) == 12  # 2 events x 6 attempts
     assert merchant.received == []
     assert simulator._queue == []
+
+
+async def test_concurrent_delivery_does_not_wait_for_a_slow_merchant(app: FastAPI) -> None:
+    """Forty webhooks to a merchant that takes 50 ms each: together, not in a line."""
+    import asyncio
+    import time
+
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.05)
+        return httpx.Response(200)
+
+    simulator: Simulator = app.state.simulator
+    simulator.http = httpx.AsyncClient(transport=httpx.MockTransport(slow))
+    for n in range(20):
+        simulator.create_payment(
+            key=f"k{n}", reference=f"o{n}", amount_cents=100, currency="EUR", method="pm_success"
+        )
+    started = time.perf_counter()
+    assert await simulator.deliver_due(everything=True, concurrency=32) == 40
+    assert time.perf_counter() - started < 0.5  # one at a time would take two seconds
+    assert {payment.status for payment in simulator.payments.values()} == {"succeeded"}
