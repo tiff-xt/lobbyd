@@ -9,7 +9,7 @@
   ],
   "targets": {
     "serve": {
-      "command": "uv run uvicorn --factory lobbyd_demo.main:app --port 8000",
+      "command": "uv run lobbyd-demo",
       "options": {
         "cwd": "apps/api"
       },

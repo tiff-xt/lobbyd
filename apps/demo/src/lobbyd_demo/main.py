@@ -1,4 +1,4 @@
-"""The whole backend in one process: `uvicorn lobbyd_demo.main:app`.
+"""The whole backend in one process: `lobbyd-demo`.
 
 The real deployment is three processes (API, worker, payment simulator), as
 in docker-compose.yml. A free hosting plan gives one small web service that
@@ -28,6 +28,7 @@ from typing import Any
 
 import httpx
 import structlog
+import uvicorn
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
@@ -120,3 +121,18 @@ def create_demo(settings: Settings | None = None) -> FastAPI:
 def app() -> FastAPI:
     """Factory for uvicorn: `uvicorn --factory lobbyd_demo.main:app`."""
     return create_demo()
+
+
+def main() -> None:
+    """`lobbyd-demo`: serve on $PORT, the variable hosting platforms set.
+
+    A command with no arguments and no shell syntax, because platforms
+    disagree about how a start command is quoted and expanded.
+    """
+    uvicorn.run(
+        "lobbyd_demo.main:app",
+        factory=True,
+        host="0.0.0.0",  # noqa: S104  (inside a container, behind the platform's proxy)
+        port=int(os.environ.get("PORT", "8000")),
+        access_log=False,
+    )

@@ -6,6 +6,9 @@ requires-python = ">=3.13"
 license = "MIT"
 dependencies = ["lobbyd", "paysim"]
 
+[project.scripts]
+lobbyd-demo = "lobbyd_demo.main:main"
+
 [tool.uv.sources]
 lobbyd = { workspace = true }
 paysim = { workspace = true }
