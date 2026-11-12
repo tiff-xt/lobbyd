@@ -21,7 +21,15 @@ Teams register for a limited number of competitor slots, spectators pick seats f
 
 ## Planned stack
 
-Python 3.13, FastAPI, SQLAlchemy 2 (async) with asyncpg, Alembic, Postgres, Redis, arq workers, pytest with a real Postgres via testcontainers, Locust for load tests, Docker Compose, GitHub Actions.
+| Area | Tools |
+| --- | --- |
+| Backend | Python, FastAPI, SQLAlchemy 2 (async) with asyncpg, Alembic, arq workers |
+| Data | Postgres, Redis |
+| Demo client | Next.js, React, TypeScript, Tailwind CSS, TanStack Query, types generated from the API's OpenAPI document |
+| Testing | pytest against a real Postgres and Redis, Locust for load tests |
+| Workspace | Nx monorepo, uv for Python, Docker Compose, GitHub Actions |
+
+**Free tooling only.** Everything here is open source and runs locally with Docker Compose at no cost. The hosted demo uses free tiers only, and nothing in the project requires a paid plan or a credit card.
 
 ## License
 

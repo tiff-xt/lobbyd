@@ -21,7 +21,7 @@ Design document, data model, decision records, this roadmap.
 
 ## Phase 1. Foundations
 
-Project skeleton with uv, FastAPI app factory, settings, async SQLAlchemy and Alembic, Docker Compose (API, Postgres, Redis), module layout with import rules, structured logging with request ids, error format, health endpoints, authentication (signup, login, access and refresh tokens, roles), CI (ruff, type checking, tests against real Postgres and Redis).
+Nx workspace with a uv workspace inside it ([ADR 0007](adr/0007-nx-monorepo.md)), FastAPI app factory, settings, async SQLAlchemy and Alembic, Docker Compose (API, Postgres, Redis), module layout with import rules, structured logging with request ids, error format, health endpoints, authentication (signup, login, access and refresh tokens, roles), CI running `nx affected` (ruff, type checking, tests against real Postgres and Redis).
 
 **Done when:** `docker compose up` gives a running API with docs; a new user can sign up and log in; CI runs lint, types, and integration tests on every push.
 
@@ -69,6 +69,6 @@ Prometheus metrics, OpenTelemetry tracing, Grafana dashboard in Compose, alerts 
 
 ## Phase 9. Demo client
 
-A small web client so the backend can be seen working: browse tournaments, pick seats on a live map, sit in the waiting room, check out against the simulator, watch a bracket update. Kept deliberately thin; the backend is the project.
+A small web client so the backend can be seen working: browse tournaments, pick seats on a live map, sit in the waiting room, check out against the simulator, watch a bracket update. Next.js, Tailwind CSS, TanStack Query, and TypeScript types generated from the API's OpenAPI document, deployed on Vercel. Kept deliberately thin; the backend is the project.
 
 **Done when:** a visitor can go from landing page to a ticket with a QR code in under a minute.
