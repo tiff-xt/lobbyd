@@ -6,84 +6,84 @@
   "settings": {},
   "requests": {
     "GET availability": {
-      "count": 6195,
+      "count": 6206,
       "failures": 0,
       "p50_ms": 3.0,
       "p95_ms": 13.0,
-      "p99_ms": 33.0,
-      "per_second": 104.9
+      "p99_ms": 28.0,
+      "per_second": 105.0
     },
     "GET order": {
-      "count": 696,
+      "count": 600,
       "failures": 0,
-      "p50_ms": 19.0,
-      "p95_ms": 69.0,
-      "p99_ms": 120.0,
-      "per_second": 11.8
+      "p50_ms": 20.0,
+      "p95_ms": 64.0,
+      "p99_ms": 85.0,
+      "per_second": 10.2
     },
     "GET seat map": {
       "count": 400,
       "failures": 0,
       "p50_ms": 9.0,
-      "p95_ms": 17.0,
-      "p99_ms": 26.0,
+      "p95_ms": 25.0,
+      "p99_ms": 35.0,
       "per_second": 6.8
     },
     "GET tournament": {
       "count": 400,
       "failures": 0,
-      "p50_ms": 18.0,
-      "p95_ms": 48.0,
-      "p99_ms": 100.0,
+      "p50_ms": 16.0,
+      "p95_ms": 35.0,
+      "p99_ms": 93.0,
       "per_second": 6.8
     },
     "POST holds": {
       "count": 401,
       "failures": 0,
-      "p50_ms": 75.0,
-      "p95_ms": 170.0,
-      "p99_ms": 240.0,
+      "p50_ms": 65.0,
+      "p95_ms": 120.0,
+      "p99_ms": 170.0,
       "per_second": 6.8
     },
     "POST orders": {
       "count": 400,
       "failures": 0,
-      "p50_ms": 74.0,
-      "p95_ms": 170.0,
-      "p99_ms": 250.0,
+      "p50_ms": 72.0,
+      "p95_ms": 150.0,
+      "p99_ms": 180.0,
       "per_second": 6.8
     },
     "POST queue": {
       "count": 400,
       "failures": 0,
-      "p50_ms": 24.0,
-      "p95_ms": 70.0,
-      "p99_ms": 140.0,
+      "p50_ms": 22.0,
+      "p95_ms": 100.0,
+      "p99_ms": 160.0,
       "per_second": 6.8
     },
     "page open to seats held": {
       "count": 400,
       "failures": 0,
-      "p50_ms": 140.0,
-      "p95_ms": 300.0,
-      "p99_ms": 520.0,
+      "p50_ms": 120.0,
+      "p95_ms": 330.0,
+      "p99_ms": 390.0,
       "per_second": 6.8
     },
     "page open to tickets": {
       "count": 400,
       "failures": 0,
-      "p50_ms": 1500.0,
-      "p95_ms": 1800.0,
-      "p99_ms": 2000.0,
+      "p50_ms": 960.0,
+      "p95_ms": 1700.0,
+      "p99_ms": 1900.0,
       "per_second": 6.8
     },
     "Aggregated": {
-      "count": 9692,
+      "count": 9607,
       "failures": 0,
-      "p50_ms": 4.0,
-      "p95_ms": 210.0,
-      "p99_ms": 1600.0,
-      "per_second": 164.0
+      "p50_ms": 3.0,
+      "p95_ms": 180.0,
+      "p99_ms": 1500.0,
+      "per_second": 162.6
     }
   },
   "outcomes": {
