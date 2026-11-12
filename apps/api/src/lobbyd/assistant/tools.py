@@ -298,8 +298,8 @@ async def withdraw_team(api: Api, args: TeamId) -> Outcome:
             "withdrawn": True,
             "team": team.get("name"),
             "entry_fee": (
-                "A paid entry fee is refunded automatically. It shows on the order as "
-                "refunded_cents within a few seconds."
+                "A paid entry fee is refunded automatically. The refund shows on the "
+                "order within a few seconds."
                 if paid
                 else "The entry fee had not been paid, so there is nothing to refund."
             ),

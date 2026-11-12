@@ -19,6 +19,8 @@ The demo runs on free hosting that sleeps when idle, so the first page can take 
 
 "Design a ticketing system" is a classic system design question because a small feature list hides hard problems: overselling, double charging, lost events, cache stampedes, traffic spikes. lobbyd is a working answer to that question, with the trade-offs written down and the claims backed by load tests.
 
+It then asks a second question on top of the first: what does it take to let an AI agent operate a system like this safely?
+
 ## Documents
 
 | Document | What it covers |
@@ -43,6 +45,7 @@ The demo runs on free hosting that sleeps when idle, so the first page can take 
 | Data | Postgres, Redis |
 | Demo client | Next.js, React, TypeScript, Tailwind CSS, TanStack Query, types generated from the API's OpenAPI document |
 | Testing | pytest against a real Postgres and Redis, Locust for load tests |
+| AI assistant | An agent loop over tool calling, provider behind one interface (Gemini on the free tier), scenario evals |
 | Caching and limits | Redis read-through cache with stampede protection, token-bucket rate limits, a waiting room |
 | Workspace | Nx monorepo, uv for Python, Docker Compose, GitHub Actions |
 
@@ -56,6 +59,7 @@ A deliberately thin Next.js app: the backend is the project. A few things in it 
 - **No CORS, no API address in the bundle.** The browser only talks to its own origin; a route handler forwards `/api/*` to the backend, whose address is a server-side setting.
 - **The seat map scales.** A 12,000 seat arena is shown as a section overview, then one section's seats at a time, with availability refreshed every few seconds. A seat someone else takes while you have it selected drops out of your basket with a message.
 - **Artwork and motion are code, not assets.** Tournament covers are generated from the game's name. The hero is an arena you can play with: seats rise under the pointer, a wave runs through the stands, seats sell while you watch, and a click claims a burst of them. One animation loop writes styles directly, so nothing re-renders, and it stops when off screen. All motion is switched off for people who ask their device for reduced motion.
+- **Live without reloading.** Seats other buyers take grey out within a quarter of a second, and brackets update for every viewer, over one WebSocket.
 - **Retries are safe from the first click.** Each "hold" and "pay" action carries an idempotency key, so a double click or a retried request cannot hold or charge twice.
 
 ## How overselling is prevented
@@ -69,6 +73,20 @@ The short version, with the details in [ADR 0002](docs/adr/0002-claiming-invento
 5. **Retries are safe.** Every booking request carries an idempotency key; sending it twice returns the first answer and does nothing more.
 
 The tests fire up to 400 simultaneous buyers at one sale and then check 21 statements that must hold across the tables ([`reconcile.py`](apps/api/src/lobbyd/reconcile.py)). Each safeguard was also deleted on purpose to confirm the tests fail without it.
+
+## The assistant
+
+Details in [the assistant](docs/assistant.md) and [ADR 0009](docs/adr/0009-assistant-agent.md).
+
+![The assistant asking for approval before withdrawing a team](docs/img/assistant.webp)
+
+A chat button in the corner of every page. It answers questions about your own orders, tickets, teams and waitlist place, and can make a few changes for you. The design assumes the model will sometimes be wrong or be talked into things, so safety does not depend on the prompt:
+
+1. **It has your permissions and no more.** Its tools are calls to the public API with your own token. There is no database access and no service account.
+2. **It asks before it changes anything.** A change is stored and shown to you; approving runs exactly the call that was shown.
+3. **Planted instructions get nowhere.** Text hidden in a tournament description can, at worst, make it ask you a question.
+4. **Made-up amounts are caught.** Money in an answer must trace back to something it looked up.
+5. **It is measured.** Fourteen scenarios build real state and grade what happened with plain checks. A free Gemini model passes 14 of 14; a stand-in that only says "I don't know" passes 4. The first real run scored 12, and both failures turned out to be mistakes in the scenarios, which is written up too.
 
 ## How payments stay correct
 
