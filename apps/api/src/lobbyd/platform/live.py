@@ -19,6 +19,7 @@ from typing import Any
 import structlog
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
+from sqlalchemy import event as sa_event
 
 from lobbyd.platform import metrics
 
@@ -141,3 +142,98 @@ class Hub:
                 log.warning("live_hub_reconnecting", error=str(exc))
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, 10)
+
+
+# --- availability feed ------------------------------------------------------------
+
+
+class AvailabilityFeed:
+    """Tells viewers of a tournament which seats were just taken or freed.
+
+    A sale produces hundreds of changes a second. Sending each as its own
+    message would be thousands of WebSocket writes a second per instance, so
+    changes are gathered per tournament and sent as one message every quarter
+    of a second.
+
+    This is a hint, not a source of truth, and is allowed to be lost or
+    wrong for a moment: clients still fetch availability on a slow timer, and
+    the claim itself is always decided in the database.
+    """
+
+    FLUSH_SECONDS = 0.25
+
+    def __init__(self) -> None:
+        self._redis: Redis | None = None
+        self._task: asyncio.Task[None] | None = None
+        self._pending: dict[str, tuple[set[str], set[str]]] = {}
+        self._users = 0
+
+    def start(self, redis: Redis) -> None:
+        """Counted, so two apps in one process (tests, the demo) can share the feed."""
+        self._users += 1
+        if self._task is None:
+            self._redis = redis
+            self._task = asyncio.create_task(self._run(), name="availability-feed")
+
+    async def stop(self) -> None:
+        self._users = max(0, self._users - 1)
+        if self._users or self._task is None:
+            return
+        self._task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await self._task
+        self._task = self._redis = None
+        self._pending.clear()
+
+    def add(self, tournament_id: str, taken: set[str], freed: set[str]) -> None:
+        if self._task is None:
+            return  # nobody to tell (a script, or a test without the app)
+        now_taken, now_freed = self._pending.setdefault(tournament_id, (set(), set()))
+        # The latest news about a seat wins.
+        now_freed -= taken
+        now_taken |= taken
+        now_taken -= freed
+        now_freed |= freed
+
+    async def flush(self) -> None:
+        if self._redis is None or not self._pending:
+            return
+        pending, self._pending = self._pending, {}
+        for tournament_id, (taken, freed) in pending.items():
+            await publish(
+                self._redis,
+                tournament_id,
+                {"type": "availability", "taken": sorted(taken), "freed": sorted(freed)},
+            )
+
+    async def _run(self) -> None:
+        while True:
+            await asyncio.sleep(self.FLUSH_SECONDS)
+            try:
+                await self.flush()
+            except RedisError:
+                log.warning("availability_feed_failed", exc_info=True)
+
+
+feed = AvailabilityFeed()
+
+_NOTES = "availability_notes"
+
+
+def note_availability(
+    session: Any, tournament_id: Any, *, taken: Any = (), freed: Any = ()
+) -> None:
+    """Announce a change once `session`'s transaction commits (and not if it rolls back).
+
+    Call with no seats to say only "the numbers changed" (standing tickets).
+    """
+    notes = session.info.get(_NOTES)
+    if notes is None:
+        notes = session.info[_NOTES] = []
+
+        def announce(_: Any) -> None:
+            for tid, was_taken, was_freed in session.info.pop(_NOTES, []):
+                feed.add(tid, was_taken, was_freed)
+
+        sa_event.listen(session.sync_session, "after_commit", announce, once=True)
+    notes.append((str(tournament_id), {str(s) for s in taken}, {str(s) for s in freed}))

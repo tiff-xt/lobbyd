@@ -139,6 +139,11 @@ STRICT = {
         JOIN matches m ON m.next_match_id = n.id AND m.winner_id IS NULL
         WHERE (CASE WHEN m.position % 2 = 0 THEN n.team_a_id ELSE n.team_b_id END) IS NOT NULL
     """,
+    "refunds add up to more than the payment": """
+        SELECT p.id FROM payments p
+        WHERE (SELECT coalesce(sum(r.amount_cents), 0) FROM refunds r WHERE r.payment_id = p.id)
+              > p.amount_cents
+    """,
     "a user has more than one active hold for a tournament": """
         SELECT user_id, tournament_id FROM holds WHERE status = 'active'
         GROUP BY user_id, tournament_id HAVING count(*) > 1
@@ -170,6 +175,10 @@ SETTLED = {
         SELECT id FROM payments
         WHERE status IN ('created', 'processing', 'refund_pending')
           AND updated_at < now() - interval '{grace}'
+    """,
+    "a partial refund has been waiting on the provider": """
+        SELECT id FROM refunds
+        WHERE status = 'pending' AND created_at < now() - interval '{grace}'
     """,
     "an event has been sitting unpublished in the outbox": """
         SELECT id FROM outbox

@@ -207,6 +207,26 @@ async def confirmed_entrants(
     return [(row.id, row.name) for row in rows]
 
 
+async def headcount(session: AsyncSession, tournament_id: uuid.UUID) -> dict[str, int]:
+    """Teams by status, plus how many captains are waiting, for the organizer."""
+    rows = await session.execute(
+        select(Team.status, func.count())
+        .where(Team.tournament_id == tournament_id)
+        .group_by(Team.status)
+    )
+    counts = {status: count for status, count in rows}
+    waiting = await session.scalar(
+        select(func.count())
+        .select_from(WaitlistEntry)
+        .where(WaitlistEntry.tournament_id == tournament_id, WaitlistEntry.status == "waiting")
+    )
+    return {
+        "confirmed": counts.get("confirmed", 0),
+        "pending": counts.get("pending", 0),
+        "waitlist": int(waiting or 0),
+    }
+
+
 async def names(session: AsyncSession, team_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
     if not team_ids:
         return {}

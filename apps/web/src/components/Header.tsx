@@ -30,6 +30,7 @@ export function Header() {
         <nav className="flex items-center">
           {link("/", "Tournaments")}
           {signedIn && link("/orders", "My tickets")}
+          {(user?.role === "organizer" || user?.role === "admin") && link("/organize", "Organize")}
         </nav>
         <div className="ml-auto flex items-center gap-2">
           {signedIn ? (

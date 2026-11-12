@@ -14,8 +14,9 @@ from lobbyd.identity.deps import configure_user_memo
 from lobbyd.identity.router import router as identity_router
 from lobbyd.inventory.router import router as inventory_router
 from lobbyd.orders.router import router as orders_router
+from lobbyd.organizer import router as organizer_router
 from lobbyd.payments.provider import PaymentProvider, PaysimProvider
-from lobbyd.platform import cache, health, metrics, tracing
+from lobbyd.platform import cache, health, live, metrics, tracing
 from lobbyd.platform.cache import create_redis
 from lobbyd.platform.db import create_engine, create_sessionmaker
 from lobbyd.platform.errors import (
@@ -53,9 +54,11 @@ def create_app(
         app.state.provider = provider or PaysimProvider.connect(settings.paysim_url)
         app.state.live = Hub(app.state.redis)
         await app.state.live.start()
+        live.feed.start(app.state.redis)
         try:
             yield
         finally:
+            await live.feed.stop()
             await app.state.live.stop()
             await app.state.redis.aclose()
             if provider is None:
@@ -86,6 +89,7 @@ def create_app(
     app.include_router(teams_router)
     app.include_router(checkin_router)
     app.include_router(brackets_router)
+    app.include_router(organizer_router)
     tracing.instrument_app(app)
     return app
 

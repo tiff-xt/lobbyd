@@ -323,6 +323,27 @@ CREATE TABLE notifications (
 - `provider_ref` is nullable because the provider is contacted by a worker after checkout has returned. Webhooks are matched on our own `id`, which the provider echoes back, so one that arrives before `provider_ref` is stored is still recognised.
 - `payments_unsettled_idx` is partial: it only contains payments in flight, so it stays small however many payments have completed.
 
+### Partial refunds
+
+Refunding a whole payment is a state of the payment (`refund_pending`, `refunded`) and ends the order. A team that withdraws gets its entry fee back while the rest of its order (seats bought alongside) stands, so that is a separate row:
+
+```sql
+CREATE TABLE refunds (
+    id           uuid PRIMARY KEY,                 -- also the idempotency key given to the provider
+    payment_id   uuid NOT NULL REFERENCES payments,
+    order_id     uuid NOT NULL,
+    amount_cents integer NOT NULL CHECK (amount_cents > 0),
+    reason       text NOT NULL,                    -- e.g. team_withdrawn:<ticket type id>
+    status       text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'succeeded')),
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    settled_at   timestamptz,
+    UNIQUE (order_id, reason)                      -- asking twice for the same thing refunds once
+);
+CREATE INDEX refunds_pending_idx ON refunds (created_at) WHERE status = 'pending';
+```
+
+It travels the same road as a payment: requested through the outbox, carried out by a worker with an idempotency key, confirmed by webhook, and found by polling if the webhook is lost. The payment row is locked while a refund is added, so refunds cannot add up to more than was paid.
+
 ## Teams and waitlist
 
 ```sql
@@ -461,7 +482,7 @@ Both tables grow without bound and are pruned by a scheduled job (idempotency ke
 
 ## Invariants
 
-Twenty-eight checks, each a query that returns the rows breaking a rule, live in [`reconcile.py`](../apps/api/src/lobbyd/reconcile.py). The tests run them after every concurrency test. The worker runs them every five minutes and logs an error if any returns a row.
+Thirty checks, each a query that returns the rows breaking a rule, live in [`reconcile.py`](../apps/api/src/lobbyd/reconcile.py). The tests run them after every concurrency test. The worker runs them every five minutes and logs an error if any returns a row.
 
 **Always true** (between any two transactions):
 
@@ -482,13 +503,14 @@ Twenty-eight checks, each a query that returns the rows breaking a rule, live in
 15. No tournament has more teams holding or owning a slot than it has slots.
 16. Every checked-in ticket has exactly one admitting scan, and every admitting scan is for a checked-in ticket. *(at most one is a constraint)*
 17. Every match winner is in the next match, and nobody is in a match they did not win their way into.
+18. Refunds on a payment never add up to more than the payment.
 
 **True once background work has caught up** (reported only when a row has been wrong for 15 minutes):
 
-18. Nobody has been charged for an order that is not paid, unless a refund is under way.
-19. No order is pending on a hold that has closed.
-20. No payment or refund is still waiting on the provider.
-21. No event is sitting unpublished in the outbox.
-22. Every paid order has a confirmation.
+19. Nobody has been charged for an order that is not paid, unless a refund is under way.
+20. No order is pending on a hold that has closed.
+21. No payment or refund, whole or partial, is still waiting on the provider.
+22. No event is sitting unpublished in the outbox.
+23. Every paid order has a confirmation.
 
 Rules marked as constraints cannot be broken by any code path. The others span tables, so they are upheld by doing the work in one transaction and verified by these checks.

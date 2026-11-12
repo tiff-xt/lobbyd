@@ -46,6 +46,11 @@ async def create_venue(body: VenueCreate, session: SessionDep, organizer: Organi
     return await service.create_venue(session, organizer, body)
 
 
+@router.get("/users/me/venues", tags=["venues"], summary="Venues I created")
+async def list_my_venues(session: SessionDep, organizer: Organizer) -> list[VenueOut]:
+    return await service.list_venues_owned_by(session, organizer)
+
+
 @router.get(
     "/venues/{venue_id}", dependencies=_reads, tags=["venues"], summary="Venue and its sections"
 )

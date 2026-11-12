@@ -15,6 +15,8 @@ SIGNATURE_HEADER = "Paysim-Signature"
 class ProviderPayment:
     ref: str
     status: str
+    # Keys of partial refunds the provider has carried out.
+    refund_keys: frozenset[str] = frozenset()
 
 
 class PaymentProvider(Protocol):
@@ -24,7 +26,7 @@ class PaymentProvider(Protocol):
 
     async def get_payment(self, ref: str) -> ProviderPayment: ...
 
-    async def refund(self, *, key: str, ref: str) -> None: ...
+    async def refund(self, *, key: str, ref: str, amount_cents: int | None = None) -> None: ...
 
     async def aclose(self) -> None: ...
 
@@ -64,11 +66,14 @@ class PaysimProvider:
         response = await self._client.get(f"/payments/{ref}")
         response.raise_for_status()
         body = response.json()
-        return ProviderPayment(body["id"], body["status"])
+        return ProviderPayment(body["id"], body["status"], frozenset(body.get("refunds", ())))
 
-    async def refund(self, *, key: str, ref: str) -> None:
+    async def refund(self, *, key: str, ref: str, amount_cents: int | None = None) -> None:
+        """All of the payment, or `amount_cents` of it."""
         response = await self._client.post(
-            f"/payments/{ref}/refunds", headers={"Idempotency-Key": key}
+            f"/payments/{ref}/refunds",
+            headers={"Idempotency-Key": key},
+            json=None if amount_cents is None else {"amount_cents": amount_cents},
         )
         response.raise_for_status()
 

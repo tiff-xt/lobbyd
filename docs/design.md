@@ -153,7 +153,7 @@ The last transition matters. A payment can succeed after its hold has expired an
 
 ### 5.2 Team registration
 
-A captain submits a team name and roster. In one transaction: a competitor slot is claimed, the team and its members are created, and uniqueness is checked (a player cannot be on two teams in the same tournament). If any part fails, nothing is kept. The team is pending until its entry fee is paid through the normal checkout, and steps aside if the hold lapses or the payment fails.
+A captain submits a team name and roster. In one transaction: a competitor slot is claimed, the team and its members are created, and uniqueness is checked (a player cannot be on two teams in the same tournament). If any part fails, nothing is kept. The team is pending until its entry fee is paid through the normal checkout, and steps aside if the hold lapses or the payment fails. A confirmed team that withdraws before the start gets its entry fee back as a partial refund; anything else in the same order stands.
 
 If slots are full, the team may join the waitlist. When a slot frees up (a hold expires, a team withdraws), a worker offers it to the first waitlisted team as a hold with its own, longer expiry. If that captain does not pay in time, or their roster no longer works, the offer moves to the next in line. Team entry closes when the tournament starts; spectator sales run until it ends.
 
@@ -168,6 +168,8 @@ If the venue network drops, scanners keep working from a manifest they downloade
 A match result and its announcement are written in one transaction (the announcement goes in the outbox). A worker publishes it on Redis pub/sub. Every API instance holds one subscription and pushes each update to its own WebSocket clients, so viewers connected to different instances all see the same bracket.
 
 Pub/sub keeps nothing: a message sent while an instance was disconnected is gone. So the stream never pretends to be complete. On every connection the server subscribes first and then sends the current bracket, each match carries a version so a stale or repeated message is ignored, and a client that falls too far behind, or whose instance lost Redis, is disconnected and starts again from a fresh snapshot.
+
+The same connection carries seat news during a sale. When a hold commits, the seats it took are published; changes are gathered per tournament and sent as one message every quarter of a second, so a busy sale costs four messages a second per viewer, not hundreds. This is deliberately a hint and not the truth: it goes straight to Redis after the commit (no outbox, because the hold is the hottest write path and a lost hint costs nothing), the page still fetches availability on a slow timer, and each client waits a random second or two after a hint before fetching, so a burst of sales does not become a burst of identical requests.
 
 ## 6. The hard parts
 
@@ -208,9 +210,11 @@ All write endpoints that create something accept `Idempotency-Key`. Lists use cu
 | `DELETE /teams/{id}` | Captain withdraws; the slot goes to the waitlist |
 | `POST /tournaments/{slug}/waitlist` | Join the waitlist when slots are full |
 | `GET /tournaments/{slug}/waitlist/me` | Place in line, or the offered hold |
+| `GET /tournaments/{slug}/sales` | Organizer: sold, held, revenue, refunds, teams, check-ins |
+| `GET /users/me/venues` | Organizer: venues to hold a tournament in |
 | `POST /tournaments/{slug}/bracket` | Organizer draws the bracket from the confirmed teams |
 | `GET /tournaments/{slug}/bracket` | Current bracket |
-| `WS /tournaments/{slug}/live` | The bracket now, then each change as it happens |
+| `WS /tournaments/{slug}/live` | The bracket now, then each change as it happens; and seats taken or freed during a sale |
 | `POST /matches/{id}/result` | Organizer records or corrects a result (carries the version it saw) |
 | `GET /checkin/{slug}/manifest` | Scanner downloads the valid tickets and the public key |
 | `POST /checkin/{slug}/scan` | Scan one ticket online |

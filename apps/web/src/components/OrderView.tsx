@@ -60,6 +60,12 @@ export function OrderView({ order, celebrate = false }: { order: Order; celebrat
             {money(order.total_cents, order.currency)}
           </span>
         </div>
+        {order.status === "paid" && (order.payment?.refunded_cents ?? 0) > 0 && (
+          <p className="mt-2 flex items-baseline justify-between text-sm text-ok">
+            <span>Refunded to you</span>
+            <span>{money(order.payment?.refunded_cents ?? 0, order.currency)}</span>
+          </p>
+        )}
       </div>
 
       {order.tickets.length > 0 && (

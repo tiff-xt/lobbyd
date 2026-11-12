@@ -13,7 +13,13 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from paysim.simulator import METHODS, Settings, Simulator, UnknownMethodError
+from paysim.simulator import (
+    METHODS,
+    RefundTooLargeError,
+    Settings,
+    Simulator,
+    UnknownMethodError,
+)
 
 
 class PaymentCreate(BaseModel):
@@ -21,6 +27,10 @@ class PaymentCreate(BaseModel):
     amount_cents: int = Field(gt=0)
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     method: str = Field(description=f"One of: {', '.join(METHODS)}")
+
+
+class RefundCreate(BaseModel):
+    amount_cents: int | None = Field(default=None, gt=0, description="Omit to refund everything")
 
 
 def create_app(
@@ -82,8 +92,15 @@ def create_app(
         return payment.public()
 
     @app.post("/payments/{payment_id}/refunds", status_code=202)
-    async def refund(payment_id: str, request: Request, key: Key) -> dict[str, Any]:
-        payment = simulator(request).refund(key=key, payment_id=payment_id)
+    async def refund(
+        payment_id: str, request: Request, key: Key, body: RefundCreate | None = None
+    ) -> dict[str, Any]:
+        try:
+            payment = simulator(request).refund(
+                key=key, payment_id=payment_id, amount_cents=body.amount_cents if body else None
+            )
+        except RefundTooLargeError as exc:
+            raise HTTPException(409, "more than is left to refund on this payment") from exc
         if payment is None:
             raise HTTPException(404, "no such payment")
         return payment.public()

@@ -18,7 +18,7 @@ from lobbyd.config import Settings
 from lobbyd.main import create_app
 from lobbyd.platform import live
 from lobbyd.platform.live import MAX_BACKLOG, Hub
-from tests.helpers import Sale, make_buyers, open_sale, work
+from tests.helpers import Sale, hold, make_buyers, open_sale, work
 from tests.invariants import assert_invariants
 from tests.test_teams import enter
 
@@ -278,6 +278,36 @@ async def test_a_result_entered_on_one_instance_reaches_viewers_on_another(
         refused = await connect(f"{address}/tournaments/no-such-tournament/live")
         await refused.wait_closed()
         assert refused.close_code == 1008
+
+
+async def test_seats_taken_and_freed_are_pushed_to_viewers(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    sale = await open_sale(client, sessionmaker)
+    first, second = await make_buyers(sessionmaker, settings, 2)
+    async with served(app) as address, connect(f"{address}/tournaments/{sale.slug}/live") as viewer:
+        assert (await next_message(viewer))["type"] == "bracket"
+
+        held = (await hold(client, first, sale, seats=sale.seat_ids[:3], general=1)).json()
+        # A refused hold changes nothing, so it announces nothing.
+        assert (await hold(client, second, sale, seats=sale.seat_ids[2:5])).status_code == 409
+        assert await next_message(viewer) == {
+            "type": "availability",
+            "taken": sorted(sale.seat_ids[:3]),
+            "freed": [],
+        }
+
+        released = await client.delete(f"/holds/{held['id']}", headers=first)
+        assert released.status_code == 204
+        assert await next_message(viewer) == {
+            "type": "availability",
+            "taken": [],
+            "freed": sorted(sale.seat_ids[:3]),
+        }
+
+        # Standing tickets have no seats to name: the message just says "look again".
+        await hold(client, second, sale, general=2)
+        assert await next_message(viewer) == {"type": "availability", "taken": [], "freed": []}
 
 
 async def test_a_viewer_that_falls_behind_is_cut_loose(app: FastAPI) -> None:

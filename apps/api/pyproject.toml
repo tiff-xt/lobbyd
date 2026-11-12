@@ -56,7 +56,7 @@ layers = [
     "lobbyd.openapi",
     "lobbyd.main | lobbyd.seed | lobbyd.cli | lobbyd.worker",
     "lobbyd.wiring | lobbyd.reconcile",
-    "lobbyd.brackets",
+    "lobbyd.brackets | lobbyd.organizer",
     "lobbyd.orders | lobbyd.teams",
     "lobbyd.inventory",
     "lobbyd.waitingroom | lobbyd.tickets | lobbyd.payments | lobbyd.notifications",

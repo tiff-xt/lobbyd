@@ -103,12 +103,27 @@ async def create_venue(session: AsyncSession, owner: User, data: VenueCreate) ->
     return await get_venue(session, venue.id)
 
 
+async def list_venues_owned_by(session: AsyncSession, owner: User) -> list[VenueOut]:
+    venues = await session.scalars(
+        select(Venue)
+        .where(Venue.owner_id == owner.id)
+        .options(selectinload(Venue.sections))
+        .order_by(Venue.name)
+        .limit(200)
+    )
+    return [_venue_out(venue) for venue in venues]
+
+
 async def get_venue(session: AsyncSession, venue_id: uuid.UUID) -> VenueOut:
     venue = await session.scalar(
         select(Venue).where(Venue.id == venue_id).options(selectinload(Venue.sections))
     )
     if venue is None:
         raise _venue_not_found()
+    return _venue_out(venue)
+
+
+def _venue_out(venue: Venue) -> VenueOut:
     return VenueOut(
         id=venue.id,
         name=venue.name,

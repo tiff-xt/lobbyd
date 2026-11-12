@@ -73,6 +73,15 @@ Prometheus metrics, OpenTelemetry tracing, Grafana dashboard in Compose, alerts 
 
 **Outcome:** metrics, tracing, the dashboard, and nine alert rules with unit tests are in ([observability](observability.md)); one checkout is one trace across both queues and the payment provider. The demo runs as a single process that migrates and reseeds itself, tested locally with production settings, with a Render blueprint and step by step instructions ([deploy](deploy.md)). The scaling write-up is [here](scaling.md). Two things could not be done from where this was built: the Grafana dashboard has not been looked at in a running Grafana (CI checks its queries against the metrics the code defines), and the demo has not been deployed.
 
+## After the roadmap
+
+Built on request once the eight phases were done:
+
+- **Refund on withdrawal.** A confirmed team that withdraws gets its entry fee back as a partial refund, through the same outbox, idempotency key, webhook, and polling fallback as a payment.
+- **Seats over the live connection.** The seat map greys out a seat within a quarter of a second of someone else taking it, without a reload. Polling stays as a slow safety net.
+- **Organizer dashboard.** Create a tournament, add what it sells, publish it, and watch sales, refunds, teams, and check-ins, from the site instead of the API.
+- **Camera scanning.** The door page reads QR codes from the device camera, using the browser's built-in detector where there is one and a JavaScript reader where there is not.
+
 ## Phase 9. Demo client
 
 A small web client so the backend can be seen working: browse tournaments, pick seats on a live map, sit in the waiting room, check out against the simulator, watch a bracket update. Next.js, Tailwind CSS, TanStack Query, and TypeScript types generated from the API's OpenAPI document, deployed on Vercel. Kept deliberately thin; the backend is the project.

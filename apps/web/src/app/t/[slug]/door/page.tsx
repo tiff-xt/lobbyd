@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { CameraScanner } from "@/components/CameraScanner";
 import { Notice, Spinner } from "@/components/ui";
 import { api, ApiError, type Manifest, unwrap } from "@/lib/api";
 import { seatName } from "@/lib/format";
@@ -88,6 +89,7 @@ export default function DoorPage() {
   const [queue, setQueue] = useState<Queued[]>([]);
   const [saved, setSaved] = useState<Manifest | null>(null);
   const [device, setDevice] = useState("door");
+  const [camera, setCamera] = useState(false);
   // Stored state is read after the first paint, so server and browser render the same page.
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- one-time read of localStorage */
@@ -249,6 +251,32 @@ export default function DoorPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-4">
+          {/* The answer first: it is what the person at the door looks at. */}
+          {latest && (
+            <div key={latest.id} className={`rise rounded-xl border p-5 ${TONE[latest.outcome]}`} role="status">
+              <p className="font-display text-3xl font-bold">{HEADLINE[latest.outcome]}</p>
+              <p className="mt-1 text-sm">{latest.detail}</p>
+            </div>
+          )}
+          <div className="panel space-y-3 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="label">Camera</p>
+              <button
+                type="button"
+                className={`btn ${camera ? "btn-ghost" : "btn-primary"} !py-1.5 text-sm`}
+                aria-pressed={camera}
+                onClick={() => setCamera((on) => !on)}
+              >
+                {camera ? "Stop camera" : "Scan with camera"}
+              </button>
+            </div>
+            {camera && (
+              // While one scan is being checked the camera keeps showing, but
+              // does not read, so a slow network cannot queue up a second scan.
+              <CameraScanner paused={scan.isPending} onCode={(code) => scan.mutate(code)} />
+            )}
+          </div>
+
           <form
             className="panel space-y-3 p-4"
             onSubmit={(event) => {
@@ -257,7 +285,7 @@ export default function DoorPage() {
             }}
           >
             <label className="block space-y-1.5">
-              <span className="label">Ticket code</span>
+              <span className="label">Or paste a ticket code</span>
               <textarea
                 className="input min-h-20 font-mono text-xs"
                 placeholder="Paste what a ticket's QR code contains (use Copy ticket code on a ticket)"
@@ -291,12 +319,6 @@ export default function DoorPage() {
             )}
           </form>
 
-          {latest && (
-            <div key={latest.id} className={`rise rounded-xl border p-5 ${TONE[latest.outcome]}`} role="status">
-              <p className="font-display text-3xl font-bold">{HEADLINE[latest.outcome]}</p>
-              <p className="mt-1 text-sm">{latest.detail}</p>
-            </div>
-          )}
           {log.length > 1 && (
             <ul className="space-y-1 text-sm">
               {log.slice(1).map((line) => (

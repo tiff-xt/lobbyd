@@ -77,7 +77,10 @@ async def list_my_teams(session: SessionDep, user: CurrentUser) -> list[TeamOut]
     status_code=status.HTTP_204_NO_CONTENT,
     tags=["teams"],
     summary="Withdraw a team",
-    description="Frees the slot for the waitlist. The entry fee is not refunded automatically.",
+    description=(
+        "Frees the slot for the waitlist. If the entry fee was paid it is refunded; "
+        "anything else bought in the same order stands."
+    ),
 )
 async def withdraw_team(team_id: uuid.UUID, session: SessionDep, user: CurrentUser) -> None:
     await service.withdraw(session, user.id, team_id)

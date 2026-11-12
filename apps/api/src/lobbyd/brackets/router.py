@@ -69,6 +69,11 @@ async def live_bracket(websocket: WebSocket, slug: str) -> None:
     right now. Then `{"type": "matches", "matches": [...]}` for each change,
     or `{"type": "reload"}` when the whole bracket should be fetched again.
     Every match carries a version: ignore one older than what you hold.
+
+    The same connection carries seat news during a sale:
+    `{"type": "availability", "taken": [seat ids], "freed": [seat ids]}`, a
+    few times a second at most. It is a hint to redraw the map at once and
+    to fetch availability again soon, not a replacement for fetching it.
     """
     hub: Hub = websocket.app.state.live
     await websocket.accept()

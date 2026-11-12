@@ -67,6 +67,8 @@ async def handle_webhook(
     if not await payments.record_event(session, event):
         log.info("webhook_duplicate", provider_event_id=event_id)
         return None
+    if event_type == "refund.partial":
+        return await _partial_refund(session, event)
     status = _STATUS.get(event_type)
     if status is None:
         return None  # a type we do not act on; acknowledged so it is not resent
@@ -74,6 +76,16 @@ async def handle_webhook(
     if change is None:
         return None
     return await orders.on_payment_update(session, change)
+
+
+async def _partial_refund(session: AsyncSession, event: dict[str, Any]) -> str | None:
+    try:
+        key = str(event["data"]["refund"]["key"])
+        refund_id = uuid.UUID(key.removeprefix("refund-"))
+    except (ValueError, KeyError, TypeError):
+        return None  # not one of ours; acknowledged so it is not resent
+    settled = await payments.settle_refund(session, refund_id)
+    return await orders.on_partial_refund(session, settled) if settled else None
 
 
 async def poll_unsettled(
@@ -103,6 +115,25 @@ async def poll_unsettled(
                 session, payment_id, status=current.status, provider_ref=provider_ref
             )
             changed = await orders.on_payment_update(session, change) if change else None
+        if changed:
+            moved += 1
+            if redis is not None:
+                await invalidate(redis, changed)
+
+    # The same safety net for partial refunds.
+    async with sessionmaker() as session:
+        refunds = await payments.pending_refunds(session, older_than_seconds=older_than_seconds)
+    for refund_id, provider_ref in refunds:
+        try:
+            current = await provider.get_payment(provider_ref)
+        except Exception:
+            log.warning("refund_poll_failed", refund_id=str(refund_id), exc_info=True)
+            continue
+        if payments.refund_key(refund_id) not in current.refund_keys:
+            continue
+        async with sessionmaker.begin() as session:
+            settled = await payments.settle_refund(session, refund_id)
+            changed = await orders.on_partial_refund(session, settled) if settled else None
         if changed:
             moved += 1
             if redis is not None:

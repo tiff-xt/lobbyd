@@ -151,7 +151,11 @@ export function TeamEntry({
             className="btn btn-ghost"
             disabled={withdraw.isPending}
             onClick={() => {
-              if (window.confirm(`Withdraw ${myTeam.name}? Your slot goes to the next team waiting.`)) {
+              if (
+                window.confirm(
+                  `Withdraw ${myTeam.name}? Your slot goes to the next team waiting, and your entry fee is refunded.`,
+                )
+              ) {
                 withdraw.mutate(myTeam.id);
               }
             }}

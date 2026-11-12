@@ -70,14 +70,18 @@ async def test_hold_then_checkout_issues_tickets(
     assert placed.status_code == 201, placed.text
     assert placed.json()["status"] == "pending"
     assert placed.json()["tickets"] == []
-    assert placed.json()["payment"] == {"status": "created", "method": "pm_success"}
+    assert placed.json()["payment"] == {
+        "status": "created",
+        "method": "pm_success",
+        "refunded_cents": 0,
+    }
     # While paying, the inventory stays theirs.
     assert await available(client, sale.slug) == {"reserved": 38, "general": 17, "competitor": 3}
 
     await settle(app)
     paid = (await client.get(f"/orders/{placed.json()['id']}", headers=buyer)).json()
     assert paid["status"] == "paid"
-    assert paid["payment"] == {"status": "succeeded", "method": "pm_success"}
+    assert paid["payment"] == {"status": "succeeded", "method": "pm_success", "refunded_cents": 0}
     assert paid["total_cents"] == held["total_cents"]
     assert paid["paid_at"] is not None
     # One ticket per seat, one per general admission place, one for the team.

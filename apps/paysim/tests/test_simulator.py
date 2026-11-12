@@ -188,6 +188,31 @@ async def test_refund(client: AsyncClient, simulator: Simulator, merchant: Merch
     assert missing.status_code == 404
 
 
+async def test_partial_refunds(
+    client: AsyncClient, simulator: Simulator, merchant: Merchant
+) -> None:
+    payment = await pay(client, "pm_success")  # 4200
+    await simulator.deliver_due(everything=True)
+    url = f"/payments/{payment['id']}/refunds"
+
+    for _ in range(2):  # one key, one refund
+        first = await client.post(
+            url, headers={"Idempotency-Key": "r1"}, json={"amount_cents": 1000}
+        )
+        assert first.status_code == 202
+    second = await client.post(url, headers={"Idempotency-Key": "r2"}, json={"amount_cents": 3200})
+    assert second.status_code == 202
+    # Nothing is left, even though neither refund has been carried out yet.
+    greedy = await client.post(url, headers={"Idempotency-Key": "r3"}, json={"amount_cents": 1})
+    assert greedy.status_code == 409
+    await simulator.deliver_due(everything=True)
+
+    assert merchant.types[-2:] == ["refund.partial", "refund.partial"]
+    body = (await client.get(f"/payments/{payment['id']}")).json()
+    # The payment stands; it records what went back.
+    assert (body["status"], body["refunds"]) == ("succeeded", {"r1": 1000, "r2": 3200})
+
+
 async def test_webhooks_are_signed(
     client: AsyncClient, simulator: Simulator, merchant: Merchant
 ) -> None:

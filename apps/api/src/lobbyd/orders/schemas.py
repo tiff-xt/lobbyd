@@ -25,6 +25,9 @@ class OrderCreate(BaseModel):
 class PaymentOut(BaseModel):
     status: str
     method: str
+    refunded_cents: int = Field(
+        default=0, description="How much has gone back to the buyer, in part or in full"
+    )
 
 
 class OrderItemOut(BaseModel):

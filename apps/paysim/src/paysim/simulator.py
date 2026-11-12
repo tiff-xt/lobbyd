@@ -53,6 +53,8 @@ class Payment:
     currency: str
     method: str
     status: str = "created"
+    # Partial refunds that have gone through: the caller's key -> amount.
+    refunds: dict[str, int] = field(default_factory=dict)
 
     def public(self) -> dict[str, Any]:
         return {
@@ -61,6 +63,7 @@ class Payment:
             "amount_cents": self.amount_cents,
             "currency": self.currency,
             "status": self.status,
+            "refunds": dict(self.refunds),
         }
 
 
@@ -73,9 +76,15 @@ class Scheduled:
     event_id: str = field(compare=False)
     deliver: bool = field(compare=False)
     attempt: int = field(compare=False, default=1)
+    # For a partial refund: (the caller's key, the amount).
+    partial: tuple[str, int] | None = field(compare=False, default=None)
 
 
 class UnknownMethodError(ValueError):
+    pass
+
+
+class RefundTooLargeError(ValueError):
     pass
 
 
@@ -86,6 +95,8 @@ class Simulator:
         self.payments: dict[str, Payment] = {}
         self._by_key: dict[str, str] = {}
         self._traces: dict[str, str] = {}
+        # Partial refunds accepted, including ones not yet carried out.
+        self._promised: dict[str, dict[str, int]] = {}
         self._queue: list[Scheduled] = []
         self._sequence = 0
         self._wake = asyncio.Event()
@@ -128,13 +139,28 @@ class Simulator:
             self._schedule(payment.id, outcome, delay * 1.2, deliver=True, event_id=outcome_event)
         return payment
 
-    def refund(self, *, key: str, payment_id: str) -> Payment | None:
+    def refund(
+        self, *, key: str, payment_id: str, amount_cents: int | None = None
+    ) -> Payment | None:
+        """Refund all of a payment, or `amount_cents` of it. Repeating a key does nothing new."""
         payment = self.payments.get(payment_id)
         if payment is None:
             return None
-        if key not in self._by_key:
+        if key in self._by_key:
+            return payment
+        delay = self.settings.delay_ms / 2000
+        if amount_cents is None:
             self._by_key[key] = payment_id
-            self._schedule(payment_id, "refunded", self.settings.delay_ms / 2000, deliver=True)
+            self._schedule(payment_id, "refunded", delay, deliver=True)
+            return payment
+        promised = sum(self._promised.get(payment_id, {}).values())
+        if payment.status != "succeeded" or promised + amount_cents > payment.amount_cents:
+            raise RefundTooLargeError(key)
+        self._by_key[key] = payment_id
+        self._promised.setdefault(payment_id, {})[key] = amount_cents
+        self._schedule(
+            payment_id, "partial_refund", delay, deliver=True, partial=(key, amount_cents)
+        )
         return payment
 
     # --- events ---------------------------------------------------------------
@@ -148,6 +174,7 @@ class Simulator:
         deliver: bool,
         event_id: str | None = None,
         attempt: int = 1,
+        partial: tuple[str, int] | None = None,
     ) -> str:
         self._sequence += 1
         event_id = event_id or f"evt_{secrets.token_hex(8)}"
@@ -161,6 +188,7 @@ class Simulator:
                 event_id,
                 deliver,
                 attempt,
+                partial,
             ),
         )
         self._wake.set()
@@ -204,18 +232,27 @@ class Simulator:
             "failed": ("created", "processing"),
             "refunded": ("succeeded",),
         }
-        if payment.status in forward[event.status]:
-            payment.status = event.status
+        if event.partial is not None:
+            # Part of the money goes back; the payment itself stays succeeded.
+            key, amount = event.partial
+            payment.refunds[key] = amount
+            event_type = "refund.partial"
+            data = {**payment.public(), "refund": {"key": key, "amount_cents": amount}}
+        else:
+            if payment.status in forward[event.status]:
+                payment.status = event.status
+            kind = "refund" if event.status == "refunded" else "payment"
+            event_type = f"{kind}.{'succeeded' if event.status == 'refunded' else event.status}"
+            data = {**payment.public(), "status": event.status}
         if not event.deliver:
             return
 
-        kind = "refund" if event.status == "refunded" else "payment"
         body = json.dumps(
             {
                 "id": event.event_id,
-                "type": f"{kind}.{'succeeded' if event.status == 'refunded' else event.status}",
+                "type": event_type,
                 "created": datetime.now(UTC).isoformat(),
-                "data": {**payment.public(), "status": event.status},
+                "data": data,
             }
         ).encode()
         signature = sign(self.settings.webhook_secret.get_secret_value(), int(time.time()), body)
@@ -244,6 +281,7 @@ class Simulator:
             deliver=True,
             event_id=event.event_id,
             attempt=event.attempt + 1,
+            partial=event.partial,
         )
 
     async def run(self) -> None:

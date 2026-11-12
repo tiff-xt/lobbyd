@@ -20,6 +20,7 @@ KINDS = {
     "order.cancelled": "payment_failed",
     "order.expired": "order_expired",
     "order.refunded": "refund_notice",
+    "order.partially_refunded": "partial_refund",
     "waitlist.offered": "waitlist_offer",
 }
 

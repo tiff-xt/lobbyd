@@ -327,7 +327,7 @@ export interface paths {
         post?: never;
         /**
          * Withdraw a team
-         * @description Frees the slot for the waitlist. The entry fee is not refunded automatically.
+         * @description Frees the slot for the waitlist. If the entry fee was paid it is refunded; anything else bought in the same order stands.
          */
         delete: operations["withdraw_team_teams__team_id__delete"];
         options?: never;
@@ -449,6 +449,26 @@ export interface paths {
          * @description Call again every second or two. `lobby` means sales have not opened; everyone there is placed in random order when they do. `queued` gives your position. `admitted` carries the token to send with your hold. Tournaments without a waiting room answer `not_required`.
          */
         post: operations["join_queue_tournaments__slug__queue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{slug}/sales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How a tournament's sale is going
+         * @description For the tournament's organizer. Numbers are live, not cached.
+         */
+        get: operations["get_sales_tournaments__slug__sales_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -608,6 +628,23 @@ export interface paths {
         };
         /** Tournaments I organize, drafts included */
         get: operations["list_my_tournaments_users_me_tournaments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/venues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Venues I created */
+        get: operations["list_my_venues_users_me_venues_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1037,6 +1074,12 @@ export interface components {
         PaymentOut: {
             /** Method */
             method: string;
+            /**
+             * Refunded Cents
+             * @description How much has gone back to the buyer, in part or in full
+             * @default 0
+             */
+            refunded_cents: number;
             /** Status */
             status: string;
         };
@@ -1147,6 +1190,45 @@ export interface components {
             label: string;
             /** Seats */
             seats: components["schemas"]["SeatOut"][];
+        };
+        /** SalesOut */
+        SalesOut: {
+            /** Checked In */
+            checked_in: number;
+            /** Currency */
+            currency: string;
+            /**
+             * Gross Cents
+             * @description Total of paid orders
+             */
+            gross_cents: number;
+            /** Net Cents */
+            net_cents: number;
+            /**
+             * Orders
+             * @description Orders by status
+             */
+            orders: {
+                [key: string]: number;
+            };
+            /**
+             * Refunded Cents
+             * @description Paid back on those orders (teams that withdrew)
+             */
+            refunded_cents: number;
+            teams: components["schemas"]["TeamCounts"];
+            /** Ticket Types */
+            ticket_types: components["schemas"]["TicketTypeSales"][];
+            /**
+             * Tickets
+             * @description Valid tickets issued
+             */
+            tickets: number;
+            /**
+             * Tournament Id
+             * Format: uuid
+             */
+            tournament_id: string;
         };
         /** ScanIn */
         ScanIn: {
@@ -1309,6 +1391,18 @@ export interface components {
              */
             result: string;
         };
+        /** TeamCounts */
+        TeamCounts: {
+            /** Confirmed */
+            confirmed: number;
+            /**
+             * Pending
+             * @description Slot held, entry fee not yet paid
+             */
+            pending: number;
+            /** Waitlist */
+            waitlist: number;
+        };
         /**
          * TeamCreate
          * @description Register a team: claims a slot now, confirmed when the entry fee is paid.
@@ -1456,6 +1550,36 @@ export interface components {
             price_cents: number;
             /** Section Ids */
             section_ids: string[];
+        };
+        /** TicketTypeSales */
+        TicketTypeSales: {
+            /** Available */
+            available: number;
+            /** Capacity */
+            capacity: number;
+            /**
+             * Gross Cents
+             * @description What paid orders spent on this type
+             */
+            gross_cents: number;
+            /**
+             * Held
+             * @description In someone's basket right now
+             */
+            held: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Price Cents */
+            price_cents: number;
+            /** Sold */
+            sold: number;
         };
         /** TokenPair */
         TokenPair: {
@@ -2661,6 +2785,37 @@ export interface operations {
             };
         };
     };
+    get_sales_tournaments__slug__sales_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOut"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_teams_tournaments__slug__teams_get: {
         parameters: {
             query?: never;
@@ -2994,6 +3149,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TournamentSummary"][];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_my_venues_users_me_venues_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenueOut"][];
                 };
             };
             /** @description The request is not valid */

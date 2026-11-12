@@ -26,7 +26,7 @@ from lobbyd.inventory import service as inventory
 from lobbyd.orders import payment_flow
 from lobbyd.orders import service as orders
 from lobbyd.payments.provider import PaysimProvider
-from lobbyd.platform import events, idempotency, metrics, outbox, tracing
+from lobbyd.platform import events, idempotency, live, metrics, outbox, tracing
 from lobbyd.platform.cache import create_redis, invalidate
 from lobbyd.platform.db import create_engine, create_sessionmaker
 from lobbyd.platform.events import EventContext
@@ -171,6 +171,7 @@ async def run() -> None:
         loop.add_signal_handler(sig, stop.set)
 
     log.info("worker_started", consumer=ctx.consumer)
+    live.feed.start(ctx.redis)  # the sweeper frees seats; viewers should hear
     tasks = start_loops(ctx)
     try:
         await stop.wait()
@@ -180,6 +181,7 @@ async def run() -> None:
         for task in tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        await live.feed.stop()
         await ctx.provider.aclose()
         await ctx.redis.aclose()
         await engine.dispose()

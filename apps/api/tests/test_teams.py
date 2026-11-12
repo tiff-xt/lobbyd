@@ -10,6 +10,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lobbyd.config import Settings
+from lobbyd.orders import payment_flow
+from lobbyd.orders.service import handle_team_withdrawn
 from lobbyd.teams import service as teams
 from lobbyd.worker import sweep
 from tests.helpers import (
@@ -263,6 +265,11 @@ async def test_withdrawing_a_confirmed_team_returns_its_slot(
     assert (await available(client, sale.slug))["competitor"] == 1
     (order,) = (await client.get("/users/me/orders", headers=captain)).json()
     assert [ticket["status"] for ticket in order["tickets"]] == ["void"]
+    # The entry fee went back, and the buyer was told.
+    assert (order["status"], order["payment"]["refunded_cents"]) == ("paid", 5000)
+    async with sessionmaker() as session:
+        kinds = list(await session.scalars(text("SELECT kind FROM notifications")))
+    assert kinds.count("partial_refund") == 1
 
     await enter(client, app, other, sale, "Night Shift")
     await assert_settled(sessionmaker)
@@ -465,3 +472,119 @@ async def test_team_entry_closes_when_the_tournament_starts(
     # Spectators can still buy while the matches are on.
     assert (await hold(client, spectator, sale, general=1)).status_code == 201
     assert (await available(client, sale.slug))["competitor"] == 1
+
+
+async def test_withdrawing_refunds_the_entry_fee_and_nothing_else(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    sale = await open_sale(client, sessionmaker)
+    (captain,) = await make_buyers(sessionmaker, settings, 1)
+    registered = await register_team(
+        client,
+        captain,
+        sale,
+        seats=sale.seat_ids[:2],
+        items=[{"ticket_type_id": sale.general, "quantity": 1}],
+    )
+    order = await buy(client, app, captain, registered.json()["hold"]["id"])
+    assert order["total_cents"] == 5000 + 2 * 4000 + 1500
+
+    await client.delete(f"/teams/{registered.json()['team']['id']}", headers=captain)
+    await settle(app)
+    # The same event arriving again (delivery is at least once) refunds nothing more.
+    await handle_team_withdrawn(
+        app.state.events,
+        {"hold_id": registered.json()["hold"]["id"], "ticket_type_id": sale.team},
+    )
+    await settle(app)
+
+    after = (await client.get(f"/orders/{order['id']}", headers=captain)).json()
+    assert (after["status"], after["payment"]["refunded_cents"]) == ("paid", 5000)
+    # Seats and standing tickets bought alongside are still good.
+    assert Counter(ticket["status"] for ticket in after["tickets"]) == {"valid": 3, "void": 1}
+    async with sessionmaker() as session:
+        assert await session.scalar(text("SELECT count(*) FROM refunds")) == 1
+    (provider_payment,) = app.state.simulator.payments.values()
+    assert sum(provider_payment.refunds.values()) == 5000
+    await assert_settled(sessionmaker)
+
+
+async def test_a_refund_whose_webhook_is_lost_is_found_by_asking(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    sale = await open_sale(client, sessionmaker, teams=1)
+    (captain,) = await make_buyers(sessionmaker, settings, 1)
+    team = await enter(client, app, captain, sale, "Night Shift")
+    (order,) = (await client.get("/users/me/orders", headers=captain)).json()
+
+    await client.delete(f"/teams/{team['id']}", headers=captain)
+    await settle(app, deliver=False)  # the refund is requested at the provider...
+    simulator = app.state.simulator
+    while simulator._queue:  # ...which carries it out, but its webhook never arrives
+        event = simulator._queue.pop()
+        simulator.payments[event.payment_id].refunds[event.partial[0]] = event.partial[1]
+    pending = (await client.get(f"/orders/{order['id']}", headers=captain)).json()
+    assert pending["payment"]["refunded_cents"] == 0
+
+    moved = await payment_flow.poll_unsettled(
+        sessionmaker, app.state.provider, older_than_seconds=0
+    )
+    assert moved == 1
+    await settle(app)
+    found = (await client.get(f"/orders/{order['id']}", headers=captain)).json()
+    assert found["payment"]["refunded_cents"] == 5000
+    await assert_settled(sessionmaker)
+
+
+async def test_a_free_entry_has_nothing_to_refund(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    sale = await open_sale(client, sessionmaker, teams=1, team_price=0)
+    (captain,) = await make_buyers(sessionmaker, settings, 1)
+    team = await enter(client, app, captain, sale, "Night Shift")
+    await client.delete(f"/teams/{team['id']}", headers=captain)
+    await settle(app)
+    async with sessionmaker() as session:
+        assert await session.scalar(text("SELECT count(*) FROM refunds")) == 0
+    assert (await available(client, sale.slug))["competitor"] == 1
+    await assert_settled(sessionmaker)
+
+
+async def test_the_organizer_sees_how_the_sale_is_going(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    sale = await open_sale(client, sessionmaker, seats=40, general=20, teams=2)
+    captain, leaver, fan, browser = await make_buyers(sessionmaker, settings, 4)
+    await enter(client, app, captain, sale, "Staying")
+    gone = await enter(client, app, leaver, sale, "Leaving")
+    await client.delete(f"/teams/{gone['id']}", headers=leaver)
+    await settle(app)
+    held = (await hold(client, fan, sale, seats=sale.seat_ids[:2], general=3)).json()
+    await buy(client, app, fan, held["id"])
+    await hold(client, browser, sale, seats=sale.seat_ids[5:6], general=1)  # still in a basket
+    await register_team(client, browser, sale)  # refused: they already hold something
+
+    response = await client.get(f"/tournaments/{sale.slug}/sales", headers=sale.organizer)
+    assert response.status_code == 200, response.text
+    sales = response.json()
+    by_name = {t["name"]: t for t in sales["ticket_types"]}
+    assert {
+        name: (t["capacity"], t["sold"], t["held"], t["available"], t["gross_cents"])
+        for name, t in by_name.items()
+    } == {
+        "Seated": (40, 2, 1, 37, 8000),
+        "Standing": (20, 3, 1, 16, 4500),
+        "Team entry": (2, 1, 0, 1, 10000),  # both paid; one was refunded
+    }
+    assert sales["orders"] == {"paid": 3}
+    assert (sales["gross_cents"], sales["refunded_cents"], sales["net_cents"]) == (
+        22500,
+        5000,
+        17500,
+    )
+    assert sales["teams"] == {"confirmed": 1, "pending": 0, "waitlist": 0}
+    assert (sales["tickets"], sales["checked_in"]) == (6, 0)
+
+    assert (await client.get(f"/tournaments/{sale.slug}/sales", headers=fan)).status_code == 403
+    venues = (await client.get("/users/me/venues", headers=sale.organizer)).json()
+    assert [venue["name"] for venue in venues] == ["Starfall Open"]

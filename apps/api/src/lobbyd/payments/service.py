@@ -15,11 +15,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import structlog
-from sqlalchemy import func, insert, select, text
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lobbyd.payments.models import Payment, PaymentEvent
+from lobbyd.payments.models import Payment, PaymentEvent, Refund
 from lobbyd.platform import outbox
 from lobbyd.platform.events import EventContext
 from lobbyd.platform.ids import uuid7
@@ -42,6 +42,17 @@ _ALLOWED_FROM = {
 class PaymentOut:
     status: str
     method: str
+    refunded_cents: int
+
+
+@dataclass(frozen=True)
+class RefundSettled:
+    """Part of a payment went back to the buyer. Returned so the orders module can react."""
+
+    refund_id: uuid.UUID
+    order_id: uuid.UUID
+    amount_cents: int
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -79,11 +90,25 @@ async def for_orders(
     session: AsyncSession, order_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, PaymentOut]:
     rows = await session.execute(
-        select(Payment.order_id, Payment.status, Payment.method).where(
+        select(Payment.order_id, Payment.status, Payment.method, Payment.amount_cents).where(
             Payment.order_id.in_(order_ids)
         )
     )
-    return {order_id: PaymentOut(status, method) for order_id, status, method in rows}
+    partial = dict(
+        (
+            await session.execute(
+                select(Refund.order_id, func.sum(Refund.amount_cents))
+                .where(Refund.order_id.in_(order_ids), Refund.status == "succeeded")
+                .group_by(Refund.order_id)
+            )
+        ).all()
+    )
+    return {
+        order_id: PaymentOut(
+            status, method, amount if status == "refunded" else int(partial.get(order_id, 0))
+        )
+        for order_id, status, method, amount in rows
+    }
 
 
 async def record_event(session: AsyncSession, event: dict[str, Any]) -> bool:
@@ -142,6 +167,89 @@ async def request_refund(session: AsyncSession, order_id: uuid.UUID) -> None:
     log.info("refund_requested", payment_id=str(payment.id))
 
 
+async def request_partial_refund(
+    session: AsyncSession, order_id: uuid.UUID, *, amount_cents: int, reason: str
+) -> bool:
+    """Ask for part of a succeeded payment to be returned; the order stands.
+
+    `reason` identifies the refund within the order: asking again with the
+    same reason does nothing. False if no refund was requested.
+    """
+    payment = await session.scalar(
+        select(Payment).where(Payment.order_id == order_id).with_for_update()
+    )
+    if payment is None or payment.status != "succeeded" or amount_cents <= 0:
+        return False
+    # With the payment locked, nobody else is adding refunds to it.
+    already = await session.scalar(
+        select(func.coalesce(func.sum(Refund.amount_cents), 0)).where(
+            Refund.payment_id == payment.id
+        )
+    )
+    if int(already or 0) + amount_cents > payment.amount_cents:
+        log.error("refund_exceeds_payment", payment_id=str(payment.id), reason=reason)
+        return False
+    refund_id = uuid7()
+    inserted = await session.execute(
+        pg_insert(Refund)
+        .values(
+            id=refund_id,
+            payment_id=payment.id,
+            order_id=order_id,
+            amount_cents=amount_cents,
+            reason=reason,
+        )
+        .on_conflict_do_nothing(index_elements=[Refund.order_id, Refund.reason])
+        .returning(Refund.id)
+    )
+    if inserted.first() is None:
+        return False
+    await outbox.emit(
+        session, REFUND_REQUESTED, {"payment_id": str(payment.id), "refund_id": str(refund_id)}
+    )
+    log.info("partial_refund_requested", refund_id=str(refund_id), amount_cents=amount_cents)
+    return True
+
+
+async def settle_refund(session: AsyncSession, refund_id: uuid.UUID) -> RefundSettled | None:
+    """The provider carried out a partial refund. None if that is old news."""
+    settled = (
+        await session.execute(
+            update(Refund)
+            .where(Refund.id == refund_id, Refund.status == "pending")
+            .values(status="succeeded", settled_at=func.now())
+            .returning(Refund.order_id, Refund.amount_cents, Refund.reason)
+        )
+    ).one_or_none()
+    if settled is None:
+        return None
+    log.info("partial_refund_succeeded", refund_id=str(refund_id))
+    return RefundSettled(refund_id, settled.order_id, settled.amount_cents, settled.reason)
+
+
+async def pending_refunds(
+    session: AsyncSession, *, older_than_seconds: int, limit: int = 100
+) -> list[tuple[uuid.UUID, str]]:
+    """(refund id, provider ref) of partial refunds that have waited a while for news."""
+    rows = await session.execute(
+        select(Refund.id, Payment.provider_ref)
+        .join(Payment, Payment.id == Refund.payment_id)
+        .where(
+            Refund.status == "pending",
+            Payment.provider_ref.is_not(None),
+            Refund.created_at < func.now() - text(f"interval '{int(older_than_seconds)} seconds'"),
+        )
+        .order_by(Refund.created_at)
+        .limit(limit)
+    )
+    return [(refund_id, ref) for refund_id, ref in rows if ref is not None]
+
+
+def refund_key(refund_id: uuid.UUID) -> str:
+    """What the provider knows a partial refund by."""
+    return f"refund-{refund_id}"
+
+
 async def unsettled(
     session: AsyncSession, *, older_than_seconds: int, limit: int = 100
 ) -> list[tuple[uuid.UUID, str]]:
@@ -194,6 +302,33 @@ async def handle_refund_requested(ctx: EventContext, payload: dict[str, Any]) ->
     payment_id = uuid.UUID(payload["payment_id"])
     async with ctx.sessionmaker() as session:
         payment = await session.get(Payment, payment_id)
-    if payment is None or payment.status != "refund_pending" or payment.provider_ref is None:
+        refund = (
+            await session.get(Refund, uuid.UUID(payload["refund_id"]))
+            if "refund_id" in payload
+            else None
+        )
+    if payment is None or payment.provider_ref is None:
+        return
+    if "refund_id" in payload:
+        # Part of the payment. Safe to run twice: the provider is given the
+        # refund's id as its idempotency key.
+        if refund is not None and refund.status == "pending":
+            await ctx.provider.refund(
+                key=refund_key(refund.id),
+                ref=payment.provider_ref,
+                amount_cents=refund.amount_cents,
+            )
+        return
+    if payment.status != "refund_pending":
         return
     await ctx.provider.refund(key=f"refund-{payment.id}", ref=payment.provider_ref)
+
+
+async def refunded_cents(session: AsyncSession, order_ids: Any) -> int:
+    """Partial refunds paid out on these orders (a subquery of order ids)."""
+    total = await session.scalar(
+        select(func.coalesce(func.sum(Refund.amount_cents), 0)).where(
+            Refund.order_id.in_(order_ids), Refund.status == "succeeded"
+        )
+    )
+    return int(total or 0)

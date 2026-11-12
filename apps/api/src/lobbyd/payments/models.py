@@ -4,7 +4,17 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, Index, Integer, String, Text, func, text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -58,3 +68,32 @@ class PaymentEvent(Base):
     received_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now()
     )
+
+
+class Refund(Base):
+    """Part of a payment handed back while the order stands (a team withdrew).
+
+    Refunding a whole payment is a state of the payment itself (see Payment).
+    """
+
+    __tablename__ = "refunds"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'succeeded')", name="status"),
+        CheckConstraint("amount_cents > 0", name="amount"),
+        # One refund per reason per order: asking twice for the same thing
+        # finds the first request instead of paying out twice.
+        UniqueConstraint("order_id", "reason"),
+        Index("refunds_pending_idx", "created_at", postgresql_where=text("status = 'pending'")),
+    )
+
+    # Also the idempotency key given to the provider.
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    payment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("payments.id"))
+    order_id: Mapped[uuid.UUID]
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default="pending")
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now()
+    )
+    settled_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))

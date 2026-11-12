@@ -794,6 +794,12 @@
             "title": "Method",
             "type": "string"
           },
+          "refunded_cents": {
+            "default": 0,
+            "description": "How much has gone back to the buyer, in part or in full",
+            "title": "Refunded Cents",
+            "type": "integer"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -1091,6 +1097,74 @@
           "seats"
         ],
         "title": "RowOut",
+        "type": "object"
+      },
+      "SalesOut": {
+        "properties": {
+          "checked_in": {
+            "title": "Checked In",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "gross_cents": {
+            "description": "Total of paid orders",
+            "title": "Gross Cents",
+            "type": "integer"
+          },
+          "net_cents": {
+            "title": "Net Cents",
+            "type": "integer"
+          },
+          "orders": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Orders by status",
+            "title": "Orders",
+            "type": "object"
+          },
+          "refunded_cents": {
+            "description": "Paid back on those orders (teams that withdrew)",
+            "title": "Refunded Cents",
+            "type": "integer"
+          },
+          "teams": {
+            "$ref": "#/components/schemas/TeamCounts"
+          },
+          "ticket_types": {
+            "items": {
+              "$ref": "#/components/schemas/TicketTypeSales"
+            },
+            "title": "Ticket Types",
+            "type": "array"
+          },
+          "tickets": {
+            "description": "Valid tickets issued",
+            "title": "Tickets",
+            "type": "integer"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tournament_id",
+          "currency",
+          "ticket_types",
+          "orders",
+          "gross_cents",
+          "refunded_cents",
+          "net_cents",
+          "teams",
+          "tickets",
+          "checked_in"
+        ],
+        "title": "SalesOut",
         "type": "object"
       },
       "ScanIn": {
@@ -1440,6 +1514,30 @@
         "title": "SyncedScan",
         "type": "object"
       },
+      "TeamCounts": {
+        "properties": {
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "integer"
+          },
+          "pending": {
+            "description": "Slot held, entry fee not yet paid",
+            "title": "Pending",
+            "type": "integer"
+          },
+          "waitlist": {
+            "title": "Waitlist",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confirmed",
+          "pending",
+          "waitlist"
+        ],
+        "title": "TeamCounts",
+        "type": "object"
+      },
       "TeamCreate": {
         "description": "Register a team: claims a slot now, confirmed when the entry fee is paid.\n\nSeats and standing tickets can be added to the same basket.",
         "properties": {
@@ -1779,6 +1877,62 @@
           "section_ids"
         ],
         "title": "TicketTypeOut",
+        "type": "object"
+      },
+      "TicketTypeSales": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "integer"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "gross_cents": {
+            "description": "What paid orders spent on this type",
+            "title": "Gross Cents",
+            "type": "integer"
+          },
+          "held": {
+            "description": "In someone's basket right now",
+            "title": "Held",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_cents": {
+            "title": "Price Cents",
+            "type": "integer"
+          },
+          "sold": {
+            "title": "Sold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "price_cents",
+          "capacity",
+          "sold",
+          "held",
+          "available",
+          "gross_cents"
+        ],
+        "title": "TicketTypeSales",
         "type": "object"
       },
       "TokenPair": {
@@ -3334,7 +3488,7 @@
     },
     "/teams/{team_id}": {
       "delete": {
-        "description": "Frees the slot for the waitlist. The entry fee is not refunded automatically.",
+        "description": "Frees the slot for the waitlist. If the entry fee was paid it is refunded; anything else bought in the same order stands.",
         "operationId": "withdraw_team_teams__team_id__delete",
         "parameters": [
           {
@@ -3878,6 +4032,54 @@
         ]
       }
     },
+    "/tournaments/{slug}/sales": {
+      "get": {
+        "description": "For the tournament's organizer. Numbers are live, not cached.",
+        "operationId": "get_sales_tournaments__slug__sales_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "How a tournament's sale is going",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
     "/tournaments/{slug}/teams": {
       "get": {
         "operationId": "list_teams_tournaments__slug__teams_get",
@@ -4417,6 +4619,46 @@
         "summary": "Tournaments I organize, drafts included",
         "tags": [
           "tournaments"
+        ]
+      }
+    },
+    "/users/me/venues": {
+      "get": {
+        "operationId": "list_my_venues_users_me_venues_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VenueOut"
+                  },
+                  "title": "Response List My Venues Users Me Venues Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Venues I created",
+        "tags": [
+          "venues"
         ]
       }
     },

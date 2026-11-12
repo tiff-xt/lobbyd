@@ -86,7 +86,7 @@ async def test_a_successful_payment(
 
     order = await buy(client, app, buyer, held["id"])
     assert order["status"] == "paid"
-    assert order["payment"] == {"status": "succeeded", "method": "pm_success"}
+    assert order["payment"] == {"status": "succeeded", "method": "pm_success", "refunded_cents": 0}
     assert len(order["tickets"]) == 3
     assert await emails(sessionmaker) == ["order_confirmation"]
     await assert_settled(sessionmaker)

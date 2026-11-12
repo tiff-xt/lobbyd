@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { Cover } from "@/components/Cover";
 import { MAX_SEATS, SeatPicker } from "@/components/SeatPicker";
@@ -11,6 +11,7 @@ import { draftProblem, emptyDraft, TeamEntry, type TeamDraft } from "@/component
 import { Notice, Spinner } from "@/components/ui";
 import { api, ApiError, idempotencyKey, type QueueStatus, unwrap } from "@/lib/api";
 import { dateTime, money, plural } from "@/lib/format";
+import { useLive } from "@/lib/live";
 import { useCanManage } from "@/lib/useCanManage";
 import { useSession } from "@/lib/useSession";
 
@@ -35,12 +36,16 @@ export default function TournamentPage() {
     enabled: !!venueId,
     staleTime: Infinity, // a venue's layout never changes
   });
+  // Whether the live connection is up, readable from inside the timer below.
+  const liveRef = useRef(false);
   const availability = useQuery({
     queryKey: ["availability", slug],
     queryFn: async () =>
       unwrap(await api.GET("/tournaments/{slug}/availability", { params: { path: { slug } } })),
-    // Other buyers are active: keep the picture fresh.
-    refetchInterval: 4000,
+    // Seat changes arrive over the live connection (below). This timer is the
+    // safety net for what it cannot tell us, such as a hold quietly running
+    // out, and the only source while the connection is down.
+    refetchInterval: () => (liveRef.current ? 20_000 : 4000),
   });
 
   // For sales with a waiting room: join it, then ask every second and a half
@@ -53,8 +58,41 @@ export default function TournamentPage() {
     refetchInterval: (query) => (query.state.data?.status === "admitted" ? false : 1500),
     staleTime: 0,
   });
-  // Seats a refused hold told us are gone, before availability catches up.
-  const [gone, setGone] = useState<string[]>([]);
+  // What we have heard about seats since availability was last fetched: from
+  // the live connection, or from a hold that was refused. Each entry is
+  // dropped as soon as a newer fetch has had its say.
+  const [hints, setHints] = useState<Record<string, { taken: boolean; at: number }>>({});
+  const hint = useCallback((ids: string[], taken: boolean) => {
+    if (ids.length === 0) return;
+    const at = Date.now();
+    setHints((current) => ({ ...current, ...Object.fromEntries(ids.map((id) => [id, { taken, at }])) }));
+  }, []);
+  const refetchSoon = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const onLive = useCallback(
+    (raw: unknown) => {
+      const message = raw as { type?: string; taken?: string[]; freed?: string[] };
+      if (message.type !== "availability") return;
+      // Redraw the map at once from what the message says...
+      hint(message.taken ?? [], true);
+      hint(message.freed ?? [], false);
+      // ...and fetch the full picture soon. At most once per burst, and at a
+      // slightly different moment for every viewer, so a busy sale does not
+      // turn into everyone asking at the same instant.
+      refetchSoon.current ??= setTimeout(
+        () => {
+          refetchSoon.current = undefined;
+          queryClient.invalidateQueries({ queryKey: ["availability", slug] });
+        },
+        1000 + Math.random() * 1500,
+      );
+    },
+    [hint, queryClient, slug],
+  );
+  const live = useLive(`/tournaments/${slug}/live`, onLive);
+  useEffect(() => {
+    liveRef.current = live;
+  }, [live]);
+  useEffect(() => () => clearTimeout(refetchSoon.current), []);
 
   // Read the clock once, when the page opens: render must not depend on it.
   const [now] = useState(() => Date.now());
@@ -63,8 +101,16 @@ export default function TournamentPage() {
   // The team being entered, if any. Null until the captain opens the form.
   const [teamDraft, setTeamDraft] = useState<TeamDraft | null>(null);
   const taken = useMemo(
-    () => new Set([...(availability.data?.taken_seat_ids ?? []), ...gone]),
-    [availability.data, gone],
+    () => {
+      const set = new Set(availability.data?.taken_seat_ids ?? []);
+      for (const [id, news] of Object.entries(hints)) {
+        if (news.at <= availability.dataUpdatedAt) continue; // the fetch is newer
+        if (news.taken) set.add(id);
+        else set.delete(id);
+      }
+      return set;
+    },
+    [availability.data, availability.dataUpdatedAt, hints],
   );
   // A seat someone else took while it was selected simply drops out.
   const picked = useMemo(() => new Set([...seats].filter((id) => !taken.has(id))), [seats, taken]);
@@ -107,7 +153,7 @@ export default function TournamentPage() {
       if (error instanceof ApiError) {
         // The refusal names the seats that went: grey them out straight away.
         if (Array.isArray(error.extra.seat_ids)) {
-          setGone((current) => [...current, ...(error.extra.seat_ids as string[])]);
+          hint(error.extra.seat_ids as string[], true);
         }
         // Our turn ran out, or we never had one: ask the queue again.
         if (error.code === "admission_required") {
@@ -198,6 +244,11 @@ export default function TournamentPage() {
           {canManage && (
             <Link href={`/t/${slug}/door`} className="btn btn-ghost !py-1.5 text-sm">
               Run the door
+            </Link>
+          )}
+          {canManage && (
+            <Link href={`/organize/${slug}`} className="btn btn-ghost !py-1.5 text-sm">
+              Sales
             </Link>
           )}
         </div>

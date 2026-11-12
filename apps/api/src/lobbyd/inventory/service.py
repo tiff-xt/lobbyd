@@ -53,6 +53,7 @@ from lobbyd.inventory.schemas import (
     HoldOut,
     TicketTypeAvailability,
 )
+from lobbyd.platform import live
 from lobbyd.platform.errors import ProblemError
 from lobbyd.platform.ids import uuid7
 from lobbyd.waitingroom import service as waitingroom
@@ -301,6 +302,7 @@ async def create_hold(
     await session.execute(
         insert(HoldItem), [{"id": uuid7(), "hold_id": hold.id, **item} for item in items]
     )
+    live.note_availability(session, info.tournament_id, taken=data.seat_ids)
     # Built from what was just written, not read back: one query fewer on
     # the busiest write path.
     return await _hold_view(
@@ -530,7 +532,8 @@ async def release_hold(
     seats = select(TournamentSeat.seat_id).where(
         TournamentSeat.tournament_id == hold.tournament_id, TournamentSeat.hold_id == hold.id
     )
-    await session.execute(seats.order_by(TournamentSeat.seat_id).with_for_update())
+    seat_ids = list(await session.scalars(seats.order_by(TournamentSeat.seat_id).with_for_update()))
+    live.note_availability(session, hold.tournament_id, freed=seat_ids)
     await session.execute(
         update(TournamentSeat)
         .where(
@@ -578,9 +581,12 @@ async def expire_due_holds(
     )
     if tournament_id is not None:
         due = due.where(Hold.tournament_id == tournament_id)
-    hold_ids = list(await session.scalars(due))
+    rows = (await session.execute(due.with_only_columns(Hold.id, Hold.tournament_id))).all()
+    hold_ids = [row.id for row in rows]
     if hold_ids:
         await _close_holds(session, hold_ids, "expired")
+        for affected in {row.tournament_id for row in rows}:
+            live.note_availability(session, affected)  # counted inventory came back
     return len(hold_ids)
 
 
@@ -641,9 +647,15 @@ async def free_lapsed_seats(session: AsyncSession, *, limit: int = 1000) -> int:
         update(TournamentSeat)
         .where(key.in_(lapsed), TournamentSeat.status == "held")
         .values(status="available", hold_id=None, held_until=None)
-        .returning(TournamentSeat.seat_id)
+        .returning(TournamentSeat.tournament_id, TournamentSeat.seat_id)
     )
-    return len(freed.all())
+    rows = freed.all()
+    by_tournament: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for tournament_id, seat_id in rows:
+        by_tournament.setdefault(tournament_id, []).append(seat_id)
+    for tournament_id, seat_ids in by_tournament.items():
+        live.note_availability(session, tournament_id, freed=seat_ids)
+    return len(rows)
 
 
 # --- interface for the orders module ------------------------------------------
@@ -830,3 +842,32 @@ async def return_sold(session: AsyncSession, ticket_type_id: uuid.UUID, quantity
         )
         .values(sold_count=InventoryCounter.sold_count - quantity)
     )
+
+
+async def stock(
+    session: AsyncSession, tournament_id: uuid.UUID
+) -> dict[uuid.UUID, tuple[int, int]]:
+    """(held, sold) per ticket type, for the organizer's view of a sale."""
+    result: dict[uuid.UUID, tuple[int, int]] = {}
+    counters = await session.execute(
+        select(
+            InventoryCounter.ticket_type_id,
+            InventoryCounter.held_count,
+            InventoryCounter.sold_count,
+        ).where(InventoryCounter.tournament_id == tournament_id)
+    )
+    for ticket_type_id, held, sold in counters:
+        result[ticket_type_id] = (held, sold)
+    held_now = (TournamentSeat.status == "held") & (TournamentSeat.held_until > func.now())
+    seats = await session.execute(
+        select(
+            TournamentSeat.ticket_type_id,
+            func.count().filter(held_now),
+            func.count().filter(TournamentSeat.status == "sold"),
+        )
+        .where(TournamentSeat.tournament_id == tournament_id)
+        .group_by(TournamentSeat.ticket_type_id)
+    )
+    for ticket_type_id, held, sold in seats:
+        result[ticket_type_id] = (held, sold)
+    return result

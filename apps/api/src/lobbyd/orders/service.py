@@ -13,6 +13,7 @@ without the order ending up anywhere it should not.
 """
 
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -295,7 +296,11 @@ async def _orders(session: AsyncSession, *where: ColumnElement[bool]) -> list[Or
             created_at=order.created_at,
             paid_at=order.paid_at,
             payment=(
-                PaymentOut(status=paid_with[order.id].status, method=paid_with[order.id].method)
+                PaymentOut(
+                    status=paid_with[order.id].status,
+                    method=paid_with[order.id].method,
+                    refunded_cents=paid_with[order.id].refunded_cents,
+                )
                 if order.id in paid_with
                 else None
             ),
@@ -307,6 +312,22 @@ async def _orders(session: AsyncSession, *where: ColumnElement[bool]) -> list[Or
 
 
 # --- event handlers -------------------------------------------------------------
+
+
+async def on_partial_refund(session: AsyncSession, refund: payments.RefundSettled) -> str:
+    """Part of an order's payment went back. Tell the buyer; return the order's cache key."""
+    order = await _lock(session, refund.order_id)
+    await outbox.emit(
+        session,
+        "order.partially_refunded",
+        {
+            **_event(order),
+            "subject_id": str(refund.refund_id),
+            "refunded_cents": refund.amount_cents,
+            "reason": refund.reason.split(":", 1)[0],
+        },
+    )
+    return cache_key(order.user_id, order.id)
 
 
 async def handle_team_withdrawn(ctx: EventContext, payload: dict[str, Any]) -> None:
@@ -326,5 +347,52 @@ async def handle_team_withdrawn(ctx: EventContext, payload: dict[str, Any]) -> N
         voided = await tickets.void(session, order.id, ticket_type_id)
         if voided:
             await inventory.return_sold(session, ticket_type_id, voided)
+            # The entry fee goes back. Anything else in the order (seats
+            # bought alongside) stands, so this is a partial refund.
+            price = await session.scalar(
+                select(OrderItem.unit_price_cents).where(
+                    OrderItem.order_id == order.id, OrderItem.ticket_type_id == ticket_type_id
+                )
+            )
+            await payments.request_partial_refund(
+                session,
+                order.id,
+                amount_cents=int(price or 0) * voided,
+                reason=f"team_withdrawn:{ticket_type_id}",
+            )
         key = cache_key(order.user_id, order.id)
     await invalidate(ctx.redis, key)
+
+
+@dataclass(frozen=True)
+class SalesFigures:
+    orders_by_status: dict[str, int]
+    gross_cents: int  # what paid orders came to, before refunds
+    gross_by_ticket_type: dict[uuid.UUID, int]
+
+
+async def sales_figures(session: AsyncSession, tournament_id: uuid.UUID) -> SalesFigures:
+    """Totals for one tournament, for its organizer."""
+    by_status = await session.execute(
+        select(Order.status, func.count(), func.coalesce(func.sum(Order.total_cents), 0))
+        .where(Order.tournament_id == tournament_id)
+        .group_by(Order.status)
+    )
+    counts: dict[str, int] = {}
+    gross = 0
+    for status, count, total in by_status:
+        counts[status] = count
+        if status == "paid":
+            gross = int(total)
+    by_type = await session.execute(
+        select(OrderItem.ticket_type_id, func.sum(OrderItem.quantity * OrderItem.unit_price_cents))
+        .join(Order, Order.id == OrderItem.order_id)
+        .where(Order.tournament_id == tournament_id, Order.status == "paid")
+        .group_by(OrderItem.ticket_type_id)
+    )
+    return SalesFigures(counts, gross, {type_id: int(total) for type_id, total in by_type})
+
+
+def paid_order_ids(tournament_id: uuid.UUID) -> Any:
+    """A subquery of the tournament's paid orders, for other modules' totals."""
+    return select(Order.id).where(Order.tournament_id == tournament_id, Order.status == "paid")
