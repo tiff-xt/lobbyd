@@ -88,6 +88,29 @@ INVARIANT_VIOLATIONS = Gauge(
 )
 RECONCILED_AT = Gauge("lobbyd_reconciled_timestamp_seconds", "When reconciliation last finished.")
 
+ASSISTANT_TURNS = Counter(
+    "lobbyd_assistant_turns_total",
+    "Assistant turns by how they ended: answered, awaiting_approval, unverified, gave_up, "
+    "model_error.",
+    ["outcome"],
+)
+ASSISTANT_TOOL_CALLS = Counter(
+    "lobbyd_assistant_tool_calls_total", "Tools the assistant ran.", ["tool", "outcome"]
+)
+ASSISTANT_ACTIONS = Counter(
+    "lobbyd_assistant_actions_total",
+    "Changes the assistant proposed, by what the person decided and how it went.",
+    ["status"],
+)
+ASSISTANT_MODEL_SECONDS = Histogram(
+    "lobbyd_assistant_model_duration_seconds",
+    "Time the language model took per call.",
+    buckets=(0.25, 0.5, 1, 2, 4, 8, 15, 30),
+)
+ASSISTANT_TOKENS = Counter(
+    "lobbyd_assistant_tokens_total", "Tokens sent to and received from the model.", ["direction"]
+)
+
 DB_POOL = Gauge(
     "lobbyd_db_pool_connections",
     "Database connections: how many are checked out, and how many there can be.",

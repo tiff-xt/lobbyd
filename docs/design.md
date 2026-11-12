@@ -212,6 +212,8 @@ All write endpoints that create something accept `Idempotency-Key`. Lists use cu
 | `GET /tournaments/{slug}/waitlist/me` | Place in line, or the offered hold |
 | `GET /tournaments/{slug}/sales` | Organizer: sold, held, revenue, refunds, teams, check-ins |
 | `GET /users/me/venues` | Organizer: venues to hold a tournament in |
+| `POST /assistant/conversations/{id}/messages` | Say something to the assistant; its steps come back as a stream of events |
+| `POST /assistant/actions/{id}/decision` | Approve or decline a change the assistant proposed |
 | `POST /tournaments/{slug}/bracket` | Organizer draws the bracket from the confirmed teams, single or double elimination |
 | `GET /tournaments/{slug}/bracket` | Current bracket |
 | `WS /tournaments/{slug}/live` | The bracket now, then each change as it happens; and seats taken or freed during a sale |

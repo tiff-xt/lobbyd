@@ -6,6 +6,8 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from lobbyd.assistant import provider as assistant_provider
+from lobbyd.assistant.router import router as assistant_router
 from lobbyd.brackets.router import router as brackets_router
 from lobbyd.catalog import service as catalog
 from lobbyd.catalog.router import router as catalog_router
@@ -55,9 +57,12 @@ def create_app(
         app.state.live = Hub(app.state.redis)
         await app.state.live.start()
         live.feed.start(app.state.redis)
+        app.state.assistant = assistant_provider.from_settings(settings)
         try:
             yield
         finally:
+            if app.state.assistant is not None:
+                await app.state.assistant.aclose()
             await live.feed.stop()
             await app.state.live.stop()
             await app.state.redis.aclose()
@@ -90,6 +95,7 @@ def create_app(
     app.include_router(checkin_router)
     app.include_router(brackets_router)
     app.include_router(organizer_router)
+    app.include_router(assistant_router)
     tracing.instrument_app(app)
     return app
 

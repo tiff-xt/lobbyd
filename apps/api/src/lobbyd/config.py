@@ -80,6 +80,17 @@ class Settings(BaseSettings):
 
     log_json: bool = False
 
+    # The assistant's language model: any provider with an OpenAI-compatible
+    # chat completions endpoint and tool calling (most free tiers have one).
+    # With no base URL the assistant is switched off and says so.
+    assistant_base_url: str = ""
+    assistant_api_key: SecretStr = SecretStr("")
+    assistant_model: str = ""
+    assistant_max_steps: int = 6  # model calls per turn, before it must answer
+    assistant_timeout_seconds: float = 30
+    # A ceiling across all users, so a busy day cannot burn through a free quota.
+    assistant_daily_turns: int = 500
+
     # Where to send traces (an OTLP/HTTP collector such as Jaeger, e.g.
     # http://jaeger:4318). Empty: tracing is off and costs nothing.
     otlp_endpoint: str = ""

@@ -81,6 +81,7 @@ Built on request once the eight phases were done:
 - **Seats over the live connection.** The seat map greys out a seat within a quarter of a second of someone else taking it, without a reload. Polling stays as a slow safety net.
 - **Organizer dashboard.** Create a tournament, add what it sells, publish it, and watch sales, refunds, teams, and check-ins, from the site instead of the API.
 - **Double elimination.** A losers bracket and a grand final with a reset, planned by a pure function and checked by a test that plays out random tournaments of twenty sizes.
+- **An AI assistant.** An agent that works through the public API with the user's own permissions, asks before it changes anything, and is measured by scenario evals. See [the assistant](assistant.md).
 - **Camera scanning.** The door page reads QR codes from the device camera, using the browser's built-in detector where there is one and a JavaScript reader where there is not.
 
 ## Phase 9. Demo client

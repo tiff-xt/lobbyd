@@ -43,6 +43,8 @@ ignore = [
 "**/migrations/**" = ["S608"]
 # Load-test scripts: they shell out, print, and use ordinary randomness on purpose.
 "**/bench/**" = ["ASYNC230", "S106", "S311", "S603", "S607", "S608", "T201", "SIM115", "E501"]
+# The eval report is a script whose job is to print a table.
+"**/evals/**" = ["T201", "E501"]
 
 [tool.mypy]
 python_version = "3.13"

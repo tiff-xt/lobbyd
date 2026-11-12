@@ -12,5 +12,6 @@ One short record per significant technical choice: the context, the options cons
 | [0006](0006-check-in-tokens-and-offline-scanning.md) | Signed ticket tokens and offline scanning | Accepted |
 | [0007](0007-nx-monorepo.md) | One repository, managed with Nx | Accepted |
 | [0008](0008-caching.md) | Three layers of caching, each for a different kind of fact | Accepted |
+| [0009](0009-assistant-agent.md) | An AI assistant that acts through the public API, with the model treated as untrusted | Accepted |
 
 "Accepted" means it is the plan. Records that make performance claims will be updated with measurements when the benchmarks exist.

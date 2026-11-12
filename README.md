@@ -13,7 +13,7 @@ Teams register for a limited number of competitor slots, spectators pick seats f
 
 The demo runs on free hosting that sleeps when idle, so the first page can take up to a minute to wake. It holds no real data and resets itself daily.
 
-> **Status: all eight phases and the demo client are complete.** Browse, queue for a turn when a sale is oversubscribed, pick seats on a live map, enter a team or join the waitlist when slots are full, pay through a simulated provider that can be told to misbehave, and receive tickets with signed QR codes. Organizers create tournaments and watch sales from a dashboard. On the day: scan tickets at the door with the camera, online or offline, and follow a bracket that updates live. Load tested, with the [results](docs/benchmarks.md) published, bad numbers included. Instrumented with metrics, traces, a dashboard, and alerts.
+> **Status: all eight phases and the demo client are complete.** Browse, queue for a turn when a sale is oversubscribed, pick seats on a live map, enter a team or join the waitlist when slots are full, pay through a simulated provider that can be told to misbehave, and receive tickets with signed QR codes. Organizers create tournaments and watch sales from a dashboard. An AI assistant answers questions about a user's own orders and teams and can act for them, with their approval. On the day: scan tickets at the door with the camera, online or offline, and follow a bracket that updates live. Load tested, with the [results](docs/benchmarks.md) published, bad numbers included. Instrumented with metrics, traces, a dashboard, and alerts.
 
 ## Why this project exists
 
@@ -30,6 +30,7 @@ The demo runs on free hosting that sleeps when idle, so the first page can take 
 | [Benchmarks](docs/benchmarks.md) | Load test results, what was slow at first, and what fixed it |
 | [Query plans](docs/query-plans.md) | What `EXPLAIN ANALYZE` showed for each hot query, and what was fixed |
 | [Errors](docs/errors.md) | Error format and every error code |
+| [Assistant](docs/assistant.md) | The AI agent: what it can do, what keeps it safe, and how real models are measured |
 | [Observability](docs/observability.md) | Metrics, alerts, traces, and how to watch a load test on the dashboard |
 | [Scaling](docs/scaling.md) | What changes, in what order, at 100 times the load |
 | [Deploy](docs/deploy.md) | Putting the demo online on free plans |

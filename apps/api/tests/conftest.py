@@ -157,3 +157,4 @@ async def _clean(app: FastAPI) -> AsyncIterator[None]:
     simulator._by_key.clear()
     simulator._queue.clear()
     app.state.events.provider = app.state.provider  # undo any test's stand-in
+    app.state.assistant = None
