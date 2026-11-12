@@ -4,8 +4,8 @@ Each phase ends with something that runs and is tested. A phase is done when its
 
 | Phase | Theme | Status |
 | --- | --- | --- |
-| 0 | Design | In review |
-| 1 | Foundations | Not started |
+| 0 | Design | Done |
+| 1 | Foundations | Done |
 | 2 | Catalog | Not started |
 | 3 | Booking core | Not started |
 | 4 | Payments and reliability | Not started |

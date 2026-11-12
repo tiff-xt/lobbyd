@@ -1,0 +1,48 @@
+[project]
+name = "lobbyd-workspace"
+version = "0.0.0"
+description = "uv workspace root for lobbyd. Not a package."
+requires-python = ">=3.13"
+# Depending on every member means a plain `uv sync` installs the whole workspace.
+dependencies = ["lobbyd"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+lobbyd = { workspace = true }
+
+[tool.uv.workspace]
+members = ["apps/api"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "import-linter>=2.1",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S", "RUF", "PT", "T20"]
+ignore = [
+    "B008", # FastAPI's Depends() in argument defaults is the intended usage
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106"]
+"**/migrations/**" = ["S608"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lobbyd"]

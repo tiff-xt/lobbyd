@@ -1,0 +1,12 @@
+{
+  "name": "lobbyd",
+  "private": true,
+  "description": "Workspace tooling for lobbyd. Application code lives in apps/.",
+  "license": "MIT",
+  "scripts": {
+    "check": "nx run-many -t lint typecheck boundaries test"
+  },
+  "devDependencies": {
+    "nx": "24.0.6"
+  }
+}

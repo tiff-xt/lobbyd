@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: lobbyd
+          POSTGRES_PASSWORD: lobbyd
+          POSTGRES_DB: lobbyd_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lobbyd"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # nx affected compares against earlier commits
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - run: npm ci
+      - run: uv sync --locked
+
+      # Sets NX_BASE and NX_HEAD: the last green commit on main, or the PR base.
+      - uses: nrwl/nx-set-shas@v4
+
+      - run: npx nx affected -t lint typecheck boundaries test
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f apps/api/Dockerfile -t lobbyd-api .
