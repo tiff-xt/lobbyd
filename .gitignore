@@ -225,3 +225,7 @@ node_modules/
 
 # Local environment
 .env
+
+# The Python template above ignores every lib/ directory. Ours are source code.
+!apps/web/src/lib/
+!libs/
