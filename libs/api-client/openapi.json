@@ -33,6 +33,22 @@
         "title": "Availability",
         "type": "object"
       },
+      "BracketCreate": {
+        "properties": {
+          "format": {
+            "default": "single",
+            "description": "double: a team is out after its second loss, not its first",
+            "enum": [
+              "single",
+              "double"
+            ],
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "title": "BracketCreate",
+        "type": "object"
+      },
       "BracketOut": {
         "properties": {
           "champion": {
@@ -44,6 +60,11 @@
                 "type": "null"
               }
             ]
+          },
+          "format": {
+            "description": "single or double elimination",
+            "title": "Format",
+            "type": "string"
           },
           "rounds": {
             "items": {
@@ -60,6 +81,7 @@
         },
         "required": [
           "tournament_id",
+          "format",
           "rounds",
           "champion"
         ],
@@ -459,10 +481,28 @@
       },
       "MatchOut": {
         "properties": {
+          "bracket": {
+            "description": "winners, losers, or final",
+            "title": "Bracket",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "loser_next_match_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Double elimination: where the loser plays next",
+            "title": "Loser Next Match Id"
           },
           "next_match_id": {
             "anyOf": [
@@ -552,6 +592,7 @@
         },
         "required": [
           "id",
+          "bracket",
           "round",
           "position",
           "team_a",
@@ -561,7 +602,8 @@
           "winner_id",
           "status",
           "version",
-          "next_match_id"
+          "next_match_id",
+          "loser_next_match_id"
         ],
         "title": "MatchOut",
         "type": "object"
@@ -1031,6 +1073,10 @@
       },
       "RoundOut": {
         "properties": {
+          "bracket": {
+            "title": "Bracket",
+            "type": "string"
+          },
           "matches": {
             "items": {
               "$ref": "#/components/schemas/MatchOut"
@@ -1048,6 +1094,7 @@
           }
         },
         "required": [
+          "bracket",
           "round",
           "name",
           "matches"
@@ -3891,7 +3938,7 @@
         ]
       },
       "post": {
-        "description": "Single elimination, seeded in registration order. With a number of teams that is not a power of two, the top seeds get a bye. A tournament has one bracket.",
+        "description": "Single or double elimination, seeded in registration order. With a number of teams that is not a power of two, the top seeds get a bye. A tournament has one bracket.",
         "operationId": "generate_bracket_tournaments__slug__bracket_post",
         "parameters": [
           {
@@ -3904,6 +3951,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BracketCreate"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {

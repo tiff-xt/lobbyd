@@ -132,12 +132,36 @@ STRICT = {
         SELECT m.id FROM matches m JOIN matches n ON n.id = m.next_match_id
         WHERE m.winner_id IS NOT NULL
           AND m.winner_id IS DISTINCT FROM
-              (CASE WHEN m.position % 2 = 0 THEN n.team_a_id ELSE n.team_b_id END)
+              (CASE WHEN m.next_slot = 'a' THEN n.team_a_id ELSE n.team_b_id END)
     """,
-    "a match is being played by a team that did not win its way there": """
+    "a match loser did not drop to the losers bracket": """
+        SELECT m.id FROM matches m JOIN matches n ON n.id = m.loser_next_match_id
+        WHERE m.winner_id IS NOT NULL
+          AND (CASE WHEN m.winner_id = m.team_a_id THEN m.team_b_id ELSE m.team_a_id END)
+              IS DISTINCT FROM
+              (CASE WHEN m.loser_next_slot = 'a' THEN n.team_a_id ELSE n.team_b_id END)
+    """,
+    "a match is being played by a team that did not earn its place there": """
         SELECT n.id FROM matches n
-        JOIN matches m ON m.next_match_id = n.id AND m.winner_id IS NULL
-        WHERE (CASE WHEN m.position % 2 = 0 THEN n.team_a_id ELSE n.team_b_id END) IS NOT NULL
+        JOIN matches m ON m.winner_id IS NULL AND (
+               (m.next_match_id = n.id
+                AND (CASE WHEN m.next_slot = 'a' THEN n.team_a_id ELSE n.team_b_id END) IS NOT NULL)
+            OR (m.loser_next_match_id = n.id
+                AND (CASE WHEN m.loser_next_slot = 'a' THEN n.team_a_id ELSE n.team_b_id END)
+                    IS NOT NULL))
+    """,
+    "a team is still playing after two losses, or after one in single elimination": """
+        SELECT l.team_id FROM (
+            SELECT m.tournament_id,
+                   CASE WHEN m.winner_id = m.team_a_id THEN m.team_b_id ELSE m.team_a_id END
+                       AS team_id
+            FROM matches m
+            WHERE m.winner_id IS NOT NULL AND m.team_a_id IS NOT NULL AND m.team_b_id IS NOT NULL
+        ) l
+        GROUP BY l.tournament_id, l.team_id
+        HAVING count(*) > (CASE WHEN EXISTS (
+            SELECT 1 FROM matches f
+            WHERE f.tournament_id = l.tournament_id AND f.bracket = 'final') THEN 2 ELSE 1 END)
     """,
     "refunds add up to more than the payment": """
         SELECT p.id FROM payments p

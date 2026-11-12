@@ -409,7 +409,7 @@ export interface paths {
         put?: never;
         /**
          * Draw the bracket from the confirmed teams
-         * @description Single elimination, seeded in registration order. With a number of teams that is not a power of two, the top seeds get a bye. A tournament has one bracket.
+         * @description Single or double elimination, seeded in registration order. With a number of teams that is not a power of two, the top seeds get a bye. A tournament has one bracket.
          */
         post: operations["generate_bracket_tournaments__slug__bracket_post"];
         delete?: never;
@@ -746,9 +746,24 @@ export interface components {
              */
             tournament_id: string;
         };
+        /** BracketCreate */
+        BracketCreate: {
+            /**
+             * Format
+             * @description double: a team is out after its second loss, not its first
+             * @default single
+             * @enum {string}
+             */
+            format: "single" | "double";
+        };
         /** BracketOut */
         BracketOut: {
             champion: components["schemas"]["TeamRef"] | null;
+            /**
+             * Format
+             * @description single or double elimination
+             */
+            format: string;
             /** Rounds */
             rounds: components["schemas"]["RoundOut"][];
             /**
@@ -947,10 +962,20 @@ export interface components {
         /** MatchOut */
         MatchOut: {
             /**
+             * Bracket
+             * @description winners, losers, or final
+             */
+            bracket: string;
+            /**
              * Id
              * Format: uuid
              */
             id: string;
+            /**
+             * Loser Next Match Id
+             * @description Double elimination: where the loser plays next
+             */
+            loser_next_match_id: string | null;
             /** Next Match Id */
             next_match_id: string | null;
             /** Position */
@@ -1167,6 +1192,8 @@ export interface components {
         };
         /** RoundOut */
         RoundOut: {
+            /** Bracket */
+            bracket: string;
             /** Matches */
             matches: components["schemas"]["MatchOut"][];
             /** Name */
@@ -2701,7 +2728,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BracketCreate"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {

@@ -432,18 +432,23 @@ Online, admission is `UPDATE tickets SET checked_in_at = now() WHERE id = :id AN
 CREATE TABLE matches (
     id            uuid PRIMARY KEY,
     tournament_id uuid NOT NULL REFERENCES tournaments,
-    round         int  NOT NULL,                   -- 1 is the first round
+    bracket       text NOT NULL DEFAULT 'winners'  -- winners, losers, or final
+                  CHECK (bracket IN ('winners', 'losers', 'final')),
+    round         int  NOT NULL,                   -- 1 is the first round of its bracket
     position      int  NOT NULL,                   -- 0-based slot within the round
     team_a_id     uuid REFERENCES teams,
     team_b_id     uuid REFERENCES teams,
     score_a       int,
     score_b       int,
     winner_id     uuid REFERENCES teams,
-    next_match_id uuid REFERENCES matches,         -- winner goes to slot A if position is even, B if odd
+    next_match_id uuid REFERENCES matches,         -- where the winner goes
+    next_slot     text,                            -- and which side of that match: 'a' or 'b'
+    loser_next_match_id uuid REFERENCES matches,   -- double elimination: where the loser goes
+    loser_next_slot     text,
     status        text NOT NULL DEFAULT 'scheduled'
                   CHECK (status IN ('scheduled', 'live', 'completed')),
     version       int  NOT NULL DEFAULT 0,         -- optimistic lock for result edits
-    UNIQUE (tournament_id, round, position),       -- also: one bracket per tournament
+    UNIQUE (tournament_id, bracket, round, position), -- also: one bracket per tournament
     CHECK (winner_id IS NULL OR winner_id = team_a_id OR winner_id = team_b_id),
     CHECK ((status = 'completed') = (winner_id IS NOT NULL))
 );
@@ -451,7 +456,11 @@ CREATE TABLE matches (
 
 Match results are edited rarely and by few people, so a version column is enough here: `UPDATE ... WHERE id = :id AND version = :seen`, and no row updated means someone else changed it first. Contrast with seats, where contention is the normal case and claims are decided by row locks.
 
-A corrected result moves the new winner into the next match, unless that match has already been played: then the correction is refused, because it would change who played a decided match.
+A corrected result moves the new winner (and in double elimination the new loser) into the matches that follow, unless one of those has already been played: then the correction is refused, because it would change who played a decided match.
+
+**Double elimination** is the same table with two more kinds of row. A team that loses in the winners bracket follows `loser_next_match_id` into the losers bracket; a loss there has nowhere to go, and the team is out. The whole bracket is planned up front by a pure function, which is what makes it testable: a test plays out brackets of twenty sizes with random results and checks that everyone but the champion loses exactly twice. Byes need care: a bye sends nobody to the losers bracket, so some losers matches would have one team or none. Those are never created; whoever would have passed through is wired straight to the next real match.
+
+The grand final is between the two bracket champions. The winners' champion has not lost, so if they lose it the two play once more (the reset), and that match only appears when it is needed.
 
 ## Platform tables
 
@@ -482,7 +491,7 @@ Both tables grow without bound and are pruned by a scheduled job (idempotency ke
 
 ## Invariants
 
-Thirty checks, each a query that returns the rows breaking a rule, live in [`reconcile.py`](../apps/api/src/lobbyd/reconcile.py). The tests run them after every concurrency test. The worker runs them every five minutes and logs an error if any returns a row.
+Thirty-two checks, each a query that returns the rows breaking a rule, live in [`reconcile.py`](../apps/api/src/lobbyd/reconcile.py). The tests run them after every concurrency test. The worker runs them every five minutes and logs an error if any returns a row.
 
 **Always true** (between any two transactions):
 
@@ -502,7 +511,7 @@ Thirty checks, each a query that returns the rows breaking a rule, live in [`rec
 14. Every team still in a tournament has exactly as many players as the format asks for, and a withdrawn team has none.
 15. No tournament has more teams holding or owning a slot than it has slots.
 16. Every checked-in ticket has exactly one admitting scan, and every admitting scan is for a checked-in ticket. *(at most one is a constraint)*
-17. Every match winner is in the next match, and nobody is in a match they did not win their way into.
+17. Every match winner is in the next match, every loser with a second life is in the losers bracket, nobody is in a match they did not earn a place in, and no team has played on after its last allowed loss.
 18. Refunds on a payment never add up to more than the payment.
 
 **True once background work has caught up** (reported only when a row has been wrong for 15 minutes):

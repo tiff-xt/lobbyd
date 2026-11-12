@@ -63,7 +63,7 @@ Signed ticket tokens, online scanning, manifest download and offline sync ([ADR 
 
 **Done when:** racing scans of one ticket admit once; an offline batch syncs correctly and duplicates are flagged; a result entered on one API instance appears on clients connected to another.
 
-**Outcome:** thirty scanners racing on one ticket admit it once. Offline batches can be uploaded twice, in any order, from several doors at once; the earliest scan ends up as the admission and the rest are listed for the organizer. A test starts a second API instance on a real port and watches a result entered on the first arrive over a WebSocket connected to the second. Not built: availability over the WebSocket (the page still polls it), and double elimination.
+**Outcome:** thirty scanners racing on one ticket admit it once. Offline batches can be uploaded twice, in any order, from several doors at once; the earliest scan ends up as the admission and the rest are listed for the organizer. A test starts a second API instance on a real port and watches a result entered on the first arrive over a WebSocket connected to the second. Availability over the WebSocket and double elimination were added later (see below).
 
 ## Phase 8. Observability and deployment
 
@@ -80,6 +80,7 @@ Built on request once the eight phases were done:
 - **Refund on withdrawal.** A confirmed team that withdraws gets its entry fee back as a partial refund, through the same outbox, idempotency key, webhook, and polling fallback as a payment.
 - **Seats over the live connection.** The seat map greys out a seat within a quarter of a second of someone else taking it, without a reload. Polling stays as a slow safety net.
 - **Organizer dashboard.** Create a tournament, add what it sells, publish it, and watch sales, refunds, teams, and check-ins, from the site instead of the API.
+- **Double elimination.** A losers bracket and a grand final with a reset, planned by a pure function and checked by a test that plays out random tournaments of twenty sizes.
 - **Camera scanning.** The door page reads QR codes from the device camera, using the browser's built-in detector where there is one and a JavaScript reader where there is not.
 
 ## Phase 9. Demo client

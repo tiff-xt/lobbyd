@@ -17,22 +17,32 @@ type LiveMessage =
 /** Fold changed matches into a bracket, never letting an older copy overwrite a newer one. */
 function merge(bracket: Bracket, changed: Match[]): Bracket {
   const incoming = new Map(changed.map((match) => [match.id, match]));
-  const rounds = bracket.rounds.map((round) => ({
-    ...round,
-    matches: round.matches.map((match) => {
-      const next = incoming.get(match.id);
-      return next && next.version > match.version ? next : match;
-    }),
-  }));
-  const final = rounds[rounds.length - 1]?.matches[0];
-  const champion =
-    final?.winner_id == null
-      ? null
-      : final.team_a?.id === final.winner_id
-        ? final.team_a
-        : final.team_b;
-  return { ...bracket, rounds, champion: champion ?? null };
+  return {
+    ...bracket,
+    rounds: bracket.rounds.map((round) => ({
+      ...round,
+      matches: round.matches.map((match) => {
+        const next = incoming.get(match.id);
+        return next && next.version > match.version ? next : match;
+      }),
+    })),
+  };
 }
+
+/**
+ * Whether a change can alter more than the matches themselves: who the
+ * champion is, or whether the grand final's reset match exists. Those are
+ * the server's to work out, so the bracket is fetched again.
+ */
+function decidesTheTitle(matches: Match[]): boolean {
+  return matches.some((match) => match.bracket === "final" || match.next_match_id === null);
+}
+
+const SECTION: Record<string, string> = {
+  winners: "Winners bracket",
+  losers: "Losers bracket",
+  final: "Grand final",
+};
 
 export default function BracketPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -65,6 +75,9 @@ export default function BracketPage() {
         queryClient.setQueryData<Bracket | null>(["bracket", slug], (current) =>
           current ? merge(current, message.matches) : current,
         );
+        if (decidesTheTitle(message.matches)) {
+          queryClient.invalidateQueries({ queryKey: ["bracket", slug] });
+        }
       } else if (message.type === "reload") {
         queryClient.invalidateQueries({ queryKey: ["bracket", slug] });
       }
@@ -74,8 +87,10 @@ export default function BracketPage() {
   const live = useLive(`/tournaments/${slug}/live`, onMessage);
 
   const draw = useMutation({
-    mutationFn: async () =>
-      unwrap(await api.POST("/tournaments/{slug}/bracket", { params: { path: { slug } } })),
+    mutationFn: async (format: "single" | "double") =>
+      unwrap(
+        await api.POST("/tournaments/{slug}/bracket", { params: { path: { slug } }, body: { format } }),
+      ),
     onSuccess: (created) => queryClient.setQueryData(key, created),
   });
 
@@ -111,16 +126,28 @@ export default function BracketPage() {
           {canManage && (
             <>
               {draw.error && <Notice tone="error">{draw.error.message}</Notice>}
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={draw.isPending}
-                onClick={() => draw.mutate()}
-              >
-                {draw.isPending ? "Drawing" : "Draw the bracket"}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={draw.isPending}
+                  onClick={() => draw.mutate("single")}
+                >
+                  Draw single elimination
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={draw.isPending}
+                  onClick={() => draw.mutate("double")}
+                >
+                  Draw double elimination
+                </button>
+              </div>
               <p className="text-xs text-muted">
-                Uses the teams confirmed right now, seeded in the order they registered.
+                Single: one loss and a team is out. Double: a team that loses drops to a second
+                bracket and is only out after losing again. Uses the teams confirmed right now,
+                seeded in the order they registered.
               </p>
             </>
           )}
@@ -135,20 +162,30 @@ export default function BracketPage() {
               </p>
             </div>
           )}
-          <div className="overflow-x-auto pb-2">
-            <div className="flex min-w-max items-stretch gap-6">
-              {bracket.data.rounds.map((round) => (
-                <section key={round.round} className="flex w-64 flex-col">
-                  <h2 className="label mb-3">{round.name}</h2>
-                  <div className="flex flex-1 flex-col justify-around gap-4">
-                    {round.matches.map((match) => (
-                      <MatchCard key={match.id} match={match} canManage={canManage} slug={slug} />
+          {(["winners", "losers", "final"] as const)
+            .map((section) => bracket.data!.rounds.filter((round) => round.bracket === section))
+            .filter((rounds) => rounds.length > 0)
+            .map((rounds) => (
+              <section key={rounds[0]!.bracket} className="space-y-3">
+                {bracket.data!.format === "double" && (
+                  <h2 className="font-display text-xl font-semibold">{SECTION[rounds[0]!.bracket]}</h2>
+                )}
+                <div className="overflow-x-auto pb-2">
+                  <div className="flex min-w-max items-stretch gap-6">
+                    {rounds.map((round) => (
+                      <div key={round.round} className="flex w-64 flex-col">
+                        <h3 className="label mb-3">{round.name}</h3>
+                        <div className="flex flex-1 flex-col justify-around gap-4">
+                          {round.matches.map((match) => (
+                            <MatchCard key={match.id} match={match} canManage={canManage} slug={slug} />
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
-                </section>
-              ))}
-            </div>
-          </div>
+                </div>
+              </section>
+            ))}
         </>
       )}
     </div>
@@ -166,6 +203,9 @@ function MatchCard({ match, canManage, slug }: { match: Match; canManage: boolea
     queryClient.setQueryData<Bracket | null>(["bracket", slug], (current) =>
       current ? merge(current, [updated]) : current,
     );
+    // The result moved teams into other matches (and perhaps decided the
+    // title). The live connection will say so too; this covers it being down.
+    queryClient.invalidateQueries({ queryKey: ["bracket", slug] });
     setEditing(false);
   };
   const path = { params: { path: { match_id: match.id } } };

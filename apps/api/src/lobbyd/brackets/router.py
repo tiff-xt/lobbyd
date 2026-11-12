@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
 
 from lobbyd.brackets import service
-from lobbyd.brackets.schemas import BracketOut, MatchOut, ResultIn, VersionIn
+from lobbyd.brackets.schemas import BracketCreate, BracketOut, MatchOut, ResultIn, VersionIn
 from lobbyd.catalog import service as catalog
 from lobbyd.identity.deps import CurrentUser
 from lobbyd.platform.db import SessionDep
@@ -32,12 +32,16 @@ async def get_bracket(slug: str, session: SessionDep) -> BracketOut:
     status_code=status.HTTP_201_CREATED,
     summary="Draw the bracket from the confirmed teams",
     description=(
-        "Single elimination, seeded in registration order. With a number of teams that is "
-        "not a power of two, the top seeds get a bye. A tournament has one bracket."
+        "Single or double elimination, seeded in registration order. With a number of teams "
+        "that is not a power of two, the top seeds get a bye. A tournament has one bracket."
     ),
 )
-async def generate_bracket(slug: str, session: SessionDep, user: CurrentUser) -> BracketOut:
-    return await service.generate(session, user, slug)
+async def generate_bracket(
+    slug: str, session: SessionDep, user: CurrentUser, body: BracketCreate | None = None
+) -> BracketOut:
+    return await service.generate(
+        session, user, slug, double=bool(body and body.format == "double")
+    )
 
 
 @router.post("/matches/{match_id}/start", summary="Mark a match as being played")

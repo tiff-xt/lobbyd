@@ -2,10 +2,12 @@
 
 import asyncio
 import json
+import random
 from collections import Counter
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+from uuid import uuid4
 
 import uvicorn
 from fastapi import FastAPI
@@ -13,7 +15,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from websockets.asyncio.client import ClientConnection, connect
 
-from lobbyd.brackets.service import round_name, seed_order
+from lobbyd.brackets.service import plan, round_name, seed_order
 from lobbyd.config import Settings
 from lobbyd.main import create_app
 from lobbyd.platform import live
@@ -221,6 +223,191 @@ async def test_two_people_entering_the_same_result_at_once(
     )
 
 
+# --- double elimination ----------------------------------------------------------
+
+
+def draw_double(client: AsyncClient, sale: Sale) -> Any:
+    return client.post(
+        f"/tournaments/{sale.slug}/bracket", json={"format": "double"}, headers=sale.organizer
+    )
+
+
+def find(bracket_: Json, section: str, round_name_: str) -> list[Json]:
+    (found,) = [
+        r["matches"]
+        for r in bracket_["rounds"]
+        if (r["bracket"], r["name"]) == (section, round_name_)
+    ]
+    matches: list[Json] = found
+    return matches
+
+
+async def test_a_team_is_out_after_its_second_loss_not_its_first(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    sale = await with_teams(client, app, sessionmaker, settings, 4)
+    drawn = await draw_double(client, sale)
+    assert drawn.status_code == 201, drawn.text
+    assert drawn.json()["format"] == "double"
+    assert [(r["bracket"], r["name"]) for r in drawn.json()["rounds"]] == [
+        ("winners", "Semifinals"),
+        ("winners", "Winners final"),
+        ("losers", "Losers round 1"),
+        ("losers", "Losers final"),
+        ("final", "Grand final"),  # the reset is not shown until it is needed
+    ]
+
+    top, bottom = find(drawn.json(), "winners", "Semifinals")  # T1 v T4, T2 v T3
+    await report(client, sale, top, 2, 0)  # T4 loses once
+    await report(client, sale, bottom, 2, 1)  # T3 loses once
+    now = await bracket(client, sale)
+    assert pairings({"matches": find(now, "winners", "Winners final")}) == [("T1", "T2")]
+    # Losing did not send them home: they play each other for a second chance.
+    assert pairings({"matches": find(now, "losers", "Losers round 1")}) == [("T4", "T3")]
+
+    await report(client, sale, find(now, "losers", "Losers round 1")[0], 0, 2)  # T4 is out
+    await report(client, sale, find(now, "winners", "Winners final")[0], 0, 2)  # T1 drops down
+    now = await bracket(client, sale)
+    assert pairings({"matches": find(now, "losers", "Losers final")}) == [("T3", "T1")]
+    await report(client, sale, find(now, "losers", "Losers final")[0], 1, 2)  # T3 is out
+
+    now = await bracket(client, sale)
+    (grand,) = find(now, "final", "Grand final")
+    assert pairings({"matches": [grand]}) == [("T2", "T1")]  # unbeaten T2 on side A
+    assert now["champion"] is None
+
+    # T1 beats T2. That is T2's first loss, so it is not over: they play again.
+    first = (await report(client, sale, grand, 1, 2)).json()
+    now = await bracket(client, sale)
+    assert now["champion"] is None
+    (reset,) = find(now, "final", "Grand final reset")
+    assert pairings({"matches": [reset]}) == [("T2", "T1")]
+
+    # Entered the wrong way round? Correcting it takes the reset away again...
+    corrected = (await report(client, sale, first, 2, 1)).json()
+    now = await bracket(client, sale)
+    assert now["champion"]["name"] == "T2"
+    assert [r["name"] for r in now["rounds"] if r["bracket"] == "final"] == ["Grand final"]
+    # ...and putting it back brings it back.
+    await report(client, sale, corrected, 1, 2)
+    (reset,) = find(await bracket(client, sale), "final", "Grand final reset")
+    await report(client, sale, reset, 0, 3)
+    assert (await bracket(client, sale))["champion"]["name"] == "T1"
+
+    # With the reset played, the first final can no longer be rewritten.
+    grand = find(await bracket(client, sale), "final", "Grand final")[0]
+    locked = await report(client, sale, grand, 5, 0)
+    assert (locked.status_code, locked.json()["code"]) == (409, "result_locked")
+    await assert_invariants(sessionmaker)
+
+
+async def test_a_result_cannot_change_once_the_loser_has_played_on(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    sale = await with_teams(client, app, sessionmaker, settings, 4)
+    drawn = (await draw_double(client, sale)).json()
+    top, bottom = find(drawn, "winners", "Semifinals")
+    played = (await report(client, sale, top, 2, 0)).json()
+    await report(client, sale, bottom, 2, 0)
+    losers_match = find(await bracket(client, sale), "losers", "Losers round 1")[0]
+    await report(client, sale, losers_match, 2, 0)
+
+    # T4 has since played (and won) in the losers bracket on the strength of
+    # this result. Flipping it now would put T1 there instead, after the fact.
+    locked = await report(client, sale, played, 0, 2)
+    assert (locked.status_code, locked.json()["code"]) == (409, "result_locked")
+    assert (
+        find(await bracket(client, sale), "winners", "Semifinals")[0]["winner_id"]
+        == (top["team_a"]["id"])
+    )
+    await assert_invariants(sessionmaker)
+
+
+def test_every_plan_gives_every_team_exactly_two_lives() -> None:
+    """Play out brackets of every size with random results, in memory.
+
+    Whatever happens, everyone but the champion must lose exactly twice, the
+    champion at most once, and every match that exists must get played.
+    """
+    rng = random.Random(7)
+    for teams in [*range(2, 18), 31, 32, 33, 64]:
+        for _ in range(4):
+            entrants = [uuid4() for _ in range(teams)]
+            rows = {r["id"]: r for r in plan(uuid4(), entrants, double=True)}
+            reset = next(r for r in rows.values() if (r["bracket"], r["round"]) == ("final", 2))
+            losses: Counter[Any] = Counter()
+            champion = None
+            while True:
+                ready = [
+                    r
+                    for r in rows.values()
+                    if r["status"] != "completed" and r["team_a_id"] and r["team_b_id"]
+                ]
+                if not ready:
+                    break
+                match = rng.choice(ready)
+                a_wins = rng.random() < 0.5
+                winner = match["team_a_id"] if a_wins else match["team_b_id"]
+                loser = match["team_b_id"] if a_wins else match["team_a_id"]
+                match["status"], match["winner_id"] = "completed", winner
+                losses[loser] += 1
+                if match["bracket"] == "final":
+                    if match["round"] == 1 and not a_wins:
+                        reset["team_a_id"], reset["team_b_id"] = (
+                            match["team_a_id"],
+                            match["team_b_id"],
+                        )
+                    else:
+                        champion = winner
+                    continue
+                if match["next_match_id"]:
+                    rows[match["next_match_id"]][f"team_{match['next_slot']}_id"] = winner
+                if match["loser_next_match_id"]:
+                    target = rows[match["loser_next_match_id"]]
+                    target[f"team_{match['loser_next_slot']}_id"] = loser
+
+            assert champion is not None, teams
+            assert losses[champion] <= 1, teams
+            assert {team: losses[team] for team in entrants if team != champion} == {
+                team: 2 for team in entrants if team != champion
+            }, teams
+            # Nothing was left unplayed except, sometimes, the reset.
+            unplayed = [r for r in rows.values() if r["status"] != "completed"]
+            assert unplayed in ([], [reset]), teams
+            # No two matches claim the same side of the same match.
+            feeds = Counter(
+                (r[f"{kind}_match_id"], r[f"{kind}_slot"])
+                for r in rows.values()
+                for kind in ("next", "loser_next")
+                if r[f"{kind}_match_id"]
+            )
+            assert max(feeds.values()) == 1, teams
+
+
+async def test_double_elimination_with_byes_plays_through(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    """Five teams, through the API: the same property, checked by the database rules."""
+    sale = await with_teams(client, app, sessionmaker, settings, 5)
+    assert (await draw_double(client, sale)).status_code == 201
+    for _ in range(20):
+        now = await bracket(client, sale)
+        ready = [
+            m
+            for r in now["rounds"]
+            for m in r["matches"]
+            if m["status"] != "completed" and m["team_a"] and m["team_b"]
+        ]
+        if not ready:
+            break
+        # The lower side always wins: every upset the format allows.
+        assert (await report(client, sale, ready[0], 0, 1)).status_code == 200
+        await assert_invariants(sessionmaker)
+    assert now["champion"] is not None
+    played = sum(1 for r in now["rounds"] for m in r["matches"] if m["team_a"] and m["team_b"])
+    assert played in (8, 9)  # 2n - 2 matches, or 2n - 1 with the reset
+
+
 # --- live -----------------------------------------------------------------------
 
 
@@ -241,9 +428,15 @@ async def served(app: FastAPI) -> AsyncIterator[str]:
         await task
 
 
-async def next_message(socket: ClientConnection) -> Json:
-    message: Json = json.loads(await asyncio.wait_for(socket.recv(), timeout=5))
-    return message
+async def next_message(socket: ClientConnection, *, seats: bool = False) -> Json:
+    """The next bracket message, or with `seats` the next seat-map one.
+
+    Both kinds share the connection, so each test reads past the other's.
+    """
+    while True:
+        message: Json = json.loads(await asyncio.wait_for(socket.recv(), timeout=5))
+        if (message["type"] == "availability") == seats:
+            return message
 
 
 async def test_a_result_entered_on_one_instance_reaches_viewers_on_another(
@@ -291,7 +484,7 @@ async def test_seats_taken_and_freed_are_pushed_to_viewers(
         held = (await hold(client, first, sale, seats=sale.seat_ids[:3], general=1)).json()
         # A refused hold changes nothing, so it announces nothing.
         assert (await hold(client, second, sale, seats=sale.seat_ids[2:5])).status_code == 409
-        assert await next_message(viewer) == {
+        assert await next_message(viewer, seats=True) == {
             "type": "availability",
             "taken": sorted(sale.seat_ids[:3]),
             "freed": [],
@@ -299,7 +492,7 @@ async def test_seats_taken_and_freed_are_pushed_to_viewers(
 
         released = await client.delete(f"/holds/{held['id']}", headers=first)
         assert released.status_code == 204
-        assert await next_message(viewer) == {
+        assert await next_message(viewer, seats=True) == {
             "type": "availability",
             "taken": [],
             "freed": sorted(sale.seat_ids[:3]),
@@ -307,7 +500,8 @@ async def test_seats_taken_and_freed_are_pushed_to_viewers(
 
         # Standing tickets have no seats to name: the message just says "look again".
         await hold(client, second, sale, general=2)
-        assert await next_message(viewer) == {"type": "availability", "taken": [], "freed": []}
+        nothing_named = {"type": "availability", "taken": [], "freed": []}
+        assert await next_message(viewer, seats=True) == nothing_named
 
 
 async def test_a_viewer_that_falls_behind_is_cut_loose(app: FastAPI) -> None:
