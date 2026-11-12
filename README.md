@@ -40,6 +40,7 @@ A deliberately thin Next.js app: the backend is the project. A few things in it 
 - **Types come from the API.** `libs/api-client` is generated from the backend's OpenAPI document, and every request in the client is checked against it. Rename a field in Python and the TypeScript build fails. CI also fails if the generated types are stale.
 - **No CORS, no API address in the bundle.** The browser only talks to its own origin; a route handler forwards `/api/*` to the backend, whose address is a server-side setting.
 - **The seat map scales.** A 12,000 seat arena is shown as a section overview, then one section's seats at a time, with availability refreshed every few seconds. A seat someone else takes while you have it selected drops out of your basket with a message.
+- **Artwork and motion are code, not assets.** Tournament covers are generated from the game's name. The hero is an arena you can play with: a follow-spot tracks the pointer, a wave runs through the stands, seats sell while you watch, and a click claims a burst of them. One animation loop writes styles directly, so nothing re-renders, and it stops when off screen. All motion is switched off for people who ask their device for reduced motion.
 - **Retries are safe from the first click.** Each "hold" and "pay" action carries an idempotency key, so a double click or a retried request cannot hold or charge twice.
 
 ## How overselling is prevented

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Notice, StatusPill } from "@/components/ui";
 import type { Order } from "@/lib/api";
 import { dateTime, inOrder, money, seatName } from "@/lib/format";
+import { Confetti } from "./Confetti";
 import { TicketCard } from "./TicketCard";
 
 const OUTCOME: Record<string, { tone: "success" | "error" | "info" | "warn"; text: string }> = {
@@ -22,10 +23,11 @@ const OUTCOME: Record<string, { tone: "success" | "error" | "info" | "warn"; tex
   },
 };
 
-export function OrderView({ order }: { order: Order }) {
+export function OrderView({ order, celebrate = false }: { order: Order; celebrate?: boolean }) {
   const outcome = OUTCOME[order.status];
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
+      {celebrate && order.status === "paid" && <Confetti />}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="label">Order</p>
@@ -64,8 +66,10 @@ export function OrderView({ order }: { order: Order }) {
         <section className="space-y-3">
           <h2 className="font-display text-xl font-semibold">Tickets</h2>
           <div className="grid gap-3 md:grid-cols-2">
-            {inOrder(order.tickets).map((ticket) => (
-              <TicketCard key={ticket.id} ticket={ticket} title={order.tournament.title} />
+            {inOrder(order.tickets).map((ticket, index) => (
+              <div key={ticket.id} className="deal h-full" style={{ animationDelay: `${index * 110}ms` }}>
+                <TicketCard ticket={ticket} title={order.tournament.title} />
+              </div>
             ))}
           </div>
         </section>

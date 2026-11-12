@@ -66,8 +66,28 @@ body {
 @layer components {
   .panel {
     border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    /* Lit from above: a lighter top edge and a gentle fall-off give the
+       surface some depth against the page. */
+    background: linear-gradient(180deg, #1a1a1c 0%, var(--panel) 55%);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.05) inset,
+      0 18px 40px -24px rgb(0 0 0 / 0.9);
     border-radius: 0.875rem;
+  }
+  .panel-link {
+    transition:
+      transform 0.18s ease,
+      border-color 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+  .panel-link:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.07) inset,
+      0 24px 50px -24px rgb(0 0 0),
+      0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent),
+      0 0 40px -12px color-mix(in srgb, var(--primary) 45%, transparent);
   }
   .label {
     font-family: var(--font-mono);
@@ -133,6 +153,251 @@ body {
   }
 }
 
+/* ------------------------------------------------------------------ motion */
+
+/* A soft gold light that follows the pointer across the whole page, like a
+   follow-spot. Positioned by --mx / --my, set from script. */
+.cursor-light {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  background: radial-gradient(
+    26rem circle at var(--mx, 50%) var(--my, 30%),
+    rgb(255 209 102 / 0.07),
+    transparent 60%
+  );
+}
+.cursor-light[data-on="true"] {
+  opacity: 1;
+}
+
+/* Cards and panels marked data-spot get a highlight under the pointer and a
+   lit edge that follows it. --px / --py are set from script. */
+[data-spot] {
+  position: relative;
+}
+[data-spot]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  background: radial-gradient(
+    18rem circle at var(--px, 50%) var(--py, 0%),
+    rgb(255 209 102 / 0.13),
+    transparent 55%
+  );
+}
+[data-spot]:hover::after {
+  opacity: 1;
+}
+
+/* Cover art: the pattern drifts slowly, and the whole cover leans in on hover. */
+.cover-art {
+  transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.group:hover .cover-art {
+  transform: scale(1.07);
+}
+@keyframes cover-drift {
+  from {
+    transform: translate3d(-10px, 0, 0);
+  }
+  to {
+    transform: translate3d(10px, -4px, 0);
+  }
+}
+.cover-pattern {
+  animation: cover-drift 9s ease-in-out infinite alternate;
+}
+
+/* A band of light that crosses the primary button on hover. */
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%) skewX(-20deg);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  pointer-events: none;
+}
+.btn-primary:hover:not(:disabled)::after {
+  transform: translateX(120%) skewX(-20deg);
+  transition: transform 0.7s ease;
+}
+
+/* The gradient in the headline slides, like light catching metal. */
+@keyframes shimmer {
+  to {
+    background-position: 200% 50%;
+  }
+}
+.shimmer-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--primary) 0%,
+    var(--secondary) 30%,
+    #fff3c4 45%,
+    var(--primary) 60%,
+    var(--secondary) 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: shimmer 5s linear infinite;
+}
+
+/* Placeholder cards while data loads. */
+@keyframes sweep {
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  border-radius: 0.875rem;
+  border: 1px solid var(--line);
+  background: linear-gradient(100deg, var(--panel) 30%, #24231f 50%, var(--panel) 70%);
+  background-size: 200% 100%;
+  animation: sweep 1.4s linear infinite;
+}
+
+/* A seat being picked: a quick overshoot, like pressing a key. */
+@keyframes pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1.1);
+  }
+}
+.seat-pop {
+  animation: pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+/* Seats arriving when a section opens, row by row. */
+@keyframes seat-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.6);
+  }
+}
+.seat-in {
+  animation: seat-in 0.32s ease-out both;
+}
+
+/* The lit seat in the logo breathes. */
+@keyframes breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+.logo-seat {
+  animation: breathe 2.6s ease-in-out infinite;
+}
+.logo-mark {
+  transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+a:hover > .logo-mark {
+  transform: rotate(-8deg) scale(1.08);
+}
+
+/* Navigation links: an underline that grows from the left. */
+.nav-link {
+  position: relative;
+}
+.nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.15rem;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s ease;
+}
+.nav-link:hover::after,
+.nav-link[aria-current="page"]::after {
+  transform: scaleX(1);
+}
+
+/* Tickets arrive one after another, tipping forward into place. */
+@keyframes deal {
+  from {
+    opacity: 0;
+    transform: perspective(700px) rotateX(-28deg) translateY(22px);
+  }
+}
+.deal {
+  transform-origin: top center;
+  animation: deal 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Confetti for a paid order. Each piece gets its own --dx, --dy, --rot. */
+@keyframes confetti {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot));
+  }
+}
+.confetti {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  animation: confetti 1.5s cubic-bezier(0.1, 0.7, 0.3, 1) both;
+}
+
+/* Stage lights sweeping over the hero arena. */
+@keyframes sweep-a {
+  from {
+    transform: rotate(-16deg);
+  }
+  to {
+    transform: rotate(13deg);
+  }
+}
+@keyframes sweep-b {
+  from {
+    transform: rotate(15deg);
+  }
+  to {
+    transform: rotate(-12deg);
+  }
+}
+.beam {
+  transform-origin: 300px 24px;
+  mix-blend-mode: screen;
+}
+.beam-a {
+  animation: sweep-a 7s ease-in-out infinite alternate;
+}
+.beam-b {
+  animation: sweep-b 9s ease-in-out infinite alternate;
+}
+.arena-seat {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: fill 0.5s ease;
+}
+
 @keyframes pulse-soft {
   50% {
     opacity: 0.45;
@@ -152,9 +417,48 @@ body {
   animation: rise 0.35s ease-out both;
 }
 
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.twinkle {
+  animation: twinkle 3.2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pulse-soft,
-  .rise {
+  .rise,
+  .twinkle,
+  .cover-pattern,
+  .shimmer-text,
+  .skeleton,
+  .seat-pop,
+  .seat-in,
+  .logo-seat,
+  .deal,
+  .beam,
+  .confetti {
     animation: none;
+  }
+  .confetti,
+  .cursor-light {
+    display: none;
+  }
+  .panel-link:hover,
+  .group:hover .cover-art,
+  a:hover > .logo-mark {
+    transform: none;
+  }
+}
+
+/* No hover on touch screens: the pointer light has nothing to follow. */
+@media (hover: none) {
+  .cursor-light {
+    display: none;
   }
 }

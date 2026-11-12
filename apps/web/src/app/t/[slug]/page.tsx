@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { Cover } from "@/components/Cover";
 import { MAX_SEATS, SeatPicker } from "@/components/SeatPicker";
 import { Notice, Spinner } from "@/components/ui";
 import { api, ApiError, idempotencyKey, unwrap } from "@/lib/api";
@@ -115,8 +117,15 @@ export default function TournamentPage() {
         <Link href="/" className="text-sm text-muted hover:text-text">
           ← All tournaments
         </Link>
-        <p className="label mt-4">{t.game}</p>
-        <h1 className="mt-1 font-display text-3xl font-bold sm:text-5xl">{t.title}</h1>
+        <div className="panel group relative mt-4 overflow-hidden">
+          <Cover game={t.game} seed={t.slug} className="block h-40 w-full sm:h-52" />
+          <div className="absolute inset-x-0 bottom-0 p-5">
+            <p className="label !text-text/80">{t.game}</p>
+            <h1 className="mt-1 font-display text-3xl font-bold drop-shadow-lg sm:text-5xl">
+              {t.title}
+            </h1>
+          </div>
+        </div>
         <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
           <Fact label="When">{dateTime(t.starts_at, t.venue?.timezone)}</Fact>
           <Fact label="Where">{t.venue ? `${t.venue.name}, ${t.venue.city}` : "Online"}</Fact>
@@ -195,7 +204,7 @@ export default function TournamentPage() {
         </div>
 
         <aside className="lg:sticky lg:top-20 lg:self-start">
-          <div className="panel space-y-4 p-5">
+          <div className="panel space-y-4 p-5" data-spot>
             <h2 className="font-display text-xl font-semibold">Your order</h2>
             {itemCount === 0 ? (
               <p className="text-sm text-muted">Pick an entry or some seats to get started.</p>
@@ -216,7 +225,14 @@ export default function TournamentPage() {
             <div className="flex items-baseline justify-between border-t border-line pt-3">
               <span className="label">Total</span>
               <span className="font-display text-2xl font-bold">
-                {itemCount === 0 ? "–" : money(seatTotal + countedTotal, t.currency)}
+                {itemCount === 0 ? (
+                  "–"
+                ) : (
+                  <AnimatedNumber
+                    value={seatTotal + countedTotal}
+                    format={(cents) => money(cents, t.currency)}
+                  />
+                )}
               </span>
             </div>
 

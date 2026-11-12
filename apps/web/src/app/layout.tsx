@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Header } from "@/components/Header";
+import { PointerLight } from "@/components/PointerLight";
 // Fonts ship with the app (open-licensed files from npm), so the build needs
 // no network access and pages make no requests to a font service.
 import "@fontsource-variable/geist";
@@ -23,8 +24,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className="antialiased">
       <body>
         <Providers>
+          <PointerLight />
           <Header />
-          <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-8 sm:px-6">{children}</main>
+          <main className="relative z-[2] mx-auto w-full max-w-6xl px-4 pb-24 pt-8 sm:px-6">{children}</main>
         </Providers>
       </body>
     </html>

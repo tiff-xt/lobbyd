@@ -3,7 +3,9 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useDeferredValue, useState } from "react";
-import { Notice, Spinner } from "@/components/ui";
+import { ArenaHero } from "@/components/ArenaHero";
+import { Cover } from "@/components/Cover";
+import { Notice } from "@/components/ui";
 import { api, type TournamentSummary, unwrap } from "@/lib/api";
 import { dateTime, day } from "@/lib/format";
 
@@ -35,18 +37,23 @@ export default function Home() {
 
   return (
     <div className="space-y-8">
-      <section className="pt-6">
-        <p className="label">Tournaments and LAN events</p>
-        <h1 className="mt-2 max-w-3xl font-display text-4xl font-bold leading-[1.05] sm:text-6xl">
-          Grab a seat before the{" "}
-          <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-            lobby fills
-          </span>
-        </h1>
-        <p className="mt-4 max-w-2xl text-muted">
-          Register your squad or pick your spot in the crowd. Seats are held for ten minutes while
-          you check out, and nobody can take them from under you.
-        </p>
+      <section className="relative isolate grid items-center gap-6 pt-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
+        <div>
+          <p className="label">Tournaments and LAN events</p>
+          <h1 className="mt-2 font-display text-4xl font-bold leading-[1.05] sm:text-6xl">
+            Grab a seat before the{" "}
+            <span className="shimmer-text">
+              lobby fills
+            </span>
+          </h1>
+          <p className="mt-4 max-w-xl text-muted">
+            Register your squad or pick your spot in the crowd. Seats are held for ten minutes
+            while you check out, and nobody can take them from under you.
+          </p>
+        </div>
+        {/* Beside the text on large screens; a faint backdrop behind it on small ones.
+            The mask fades every edge out, so it never ends in a hard line. */}
+        <ArenaHero className="pointer-events-none absolute inset-x-0 top-0 -z-10 mx-auto w-full max-w-md opacity-30 [mask-image:radial-gradient(ellipse_50%_62%_at_50%_42%,black_55%,transparent_100%)] lg:pointer-events-auto lg:static lg:z-0 lg:max-w-none lg:opacity-100" />
       </section>
 
       <section className="space-y-3">
@@ -74,7 +81,13 @@ export default function Home() {
         </div>
       </section>
 
-      {tournaments.isPending && <Spinner label="Loading tournaments" />}
+      {tournaments.isPending && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-label="Loading tournaments">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="skeleton h-64" style={{ animationDelay: `${i * 90}ms` }} />
+          ))}
+        </div>
+      )}
       {tournaments.isError && (
         <Notice tone="error">
           Could not load tournaments. Is the API running? ({tournaments.error.message})
@@ -88,8 +101,9 @@ export default function Home() {
       )}
 
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((tournament) => (
-          <li key={tournament.id}>
+        {items.map((tournament, index) => (
+          // Each page of twelve arrives as a quick cascade.
+          <li key={tournament.id} className="rise" style={{ animationDelay: `${(index % 12) * 45}ms` }}>
             <TournamentCard tournament={tournament} />
           </li>
         ))}
@@ -142,40 +156,36 @@ function TournamentCard({ tournament }: { tournament: TournamentSummary }) {
   return (
     <Link
       href={`/t/${tournament.slug}`}
-      className="panel rise group flex h-full flex-col gap-4 p-4 transition-colors hover:border-primary/60"
+      data-spot
+      className="panel panel-link group flex h-full flex-col overflow-hidden"
     >
-      <div className="flex items-start gap-3">
-        <div className="grid w-12 shrink-0 place-items-center rounded-lg border border-line bg-bg py-1.5 text-center">
-          <span className="font-mono text-[10px] tracking-widest text-secondary">{date.month}</span>
+      <div className="relative">
+        <Cover game={tournament.game} seed={tournament.slug} className="block h-28 w-full" />
+        <div className="absolute left-3 top-3 grid w-12 place-items-center rounded-lg border border-white/15 bg-bg/80 py-1.5 text-center backdrop-blur">
+          <span className="font-mono text-[10px] tracking-widest text-primary">{date.month}</span>
           <span className="font-display text-xl font-bold leading-none">{date.day}</span>
         </div>
-        <div className="min-w-0">
+        {live && (
+          <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-bg/80 px-2.5 py-1 font-mono text-[11px] uppercase tracking-widest text-danger backdrop-blur">
+            <span className="pulse-soft size-1.5 rounded-full bg-danger" /> Live
+          </span>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col gap-3 p-4 pt-3">
+        <div>
           <p className="label truncate">{tournament.game}</p>
-          <h2 className="mt-0.5 font-display text-lg font-semibold leading-snug group-hover:text-secondary">
+          <h2 className="mt-0.5 font-display text-lg font-semibold leading-snug group-hover:text-primary">
             {tournament.title}
           </h2>
         </div>
-      </div>
-      <dl className="mt-auto grid grid-cols-2 gap-2 text-sm">
-        <div>
-          <dt className="label">Where</dt>
-          <dd className="truncate">{tournament.venue ? tournament.venue.city : "Online"}</dd>
-        </div>
-        <div>
-          <dt className="label">Format</dt>
-          <dd>
+        <p className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-3 text-sm text-muted">
+          <span className="text-text">{tournament.venue ? tournament.venue.city : "Online"}</span>
+          <span>
             {tournament.team_size}v{tournament.team_size}
-          </dd>
-        </div>
-      </dl>
-      <p className="flex items-center gap-2 border-t border-line pt-3 text-sm text-muted">
-        {live && (
-          <span className="inline-flex items-center gap-1.5 text-danger">
-            <span className="pulse-soft size-1.5 rounded-full bg-danger" /> Live now
           </span>
-        )}
-        {!live && dateTime(tournament.starts_at, tournament.venue?.timezone)}
-      </p>
+          <span className="ml-auto">{dateTime(tournament.starts_at, tournament.venue?.timezone)}</span>
+        </p>
+      </div>
     </Link>
   );
 }

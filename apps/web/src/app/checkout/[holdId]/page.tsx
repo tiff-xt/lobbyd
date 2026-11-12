@@ -81,6 +81,11 @@ export default function CheckoutPage() {
     onSuccess: () => router.push(hold.data ? `/t/${hold.data.tournament.slug}` : "/"),
   });
 
+  // True once this visit has seen the order pending, so arriving at an
+  // already-paid order does not celebrate again.
+  const [sawPending, setSawPending] = useState(false);
+  if (order.data?.status === "pending" && !sawPending) setSawPending(true);
+
   const waiting = hold.data?.status === "active" && !order.data;
   const now = useNow(waiting || order.data?.status === "pending");
 
@@ -111,7 +116,8 @@ export default function CheckoutPage() {
             </div>
           </div>
         )}
-        <OrderView order={order.data} />
+        {/* Confetti only when the payment lands while you are watching. */}
+        <OrderView order={order.data} celebrate={sawPending} />
         {order.data.status !== "pending" && (
           <div className="flex gap-3">
             <Link className="btn btn-ghost" href="/orders">

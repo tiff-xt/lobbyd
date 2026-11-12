@@ -11,7 +11,8 @@ export function Header() {
   const link = (href: string, text: string) => (
     <Link
       href={href}
-      className={`rounded-md px-3 py-1.5 text-sm transition-colors hover:text-text ${
+      aria-current={pathname === href ? "page" : undefined}
+      className={`nav-link rounded-md px-3 py-1.5 text-sm transition-colors hover:text-text ${
         pathname === href ? "text-text" : "text-muted"
       }`}
     >

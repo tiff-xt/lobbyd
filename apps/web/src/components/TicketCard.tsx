@@ -19,7 +19,7 @@ export function TicketCard({ ticket, title }: { ticket: Ticket; title: string })
   }, [ticket.id]);
 
   return (
-    <article className="panel rise flex overflow-hidden">
+    <article className="panel flex h-full overflow-hidden" data-spot>
       <div className="min-w-0 flex-1 space-y-3 p-4">
         <div>
           <p className="label">{ticket.ticket_type_name}</p>
