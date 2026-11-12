@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from sqlalchemy import MetaData
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -54,6 +55,13 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
         except BaseException:
             await session.rollback()
             raise
+
+
+def violated_constraint(exc: IntegrityError) -> str | None:
+    """Name of the constraint an IntegrityError tripped, to map it to a precise error."""
+    cause = getattr(exc.orig, "__cause__", None)
+    name = getattr(cause, "constraint_name", None)
+    return name if isinstance(name, str) else None
 
 
 # scope="function": the commit happens before the response is sent, so a client

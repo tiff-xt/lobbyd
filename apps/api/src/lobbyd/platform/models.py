@@ -7,7 +7,7 @@ does not depend on feature modules at import time.
 
 from importlib import import_module
 
-_MODEL_MODULES = ("lobbyd.identity.models",)
+_MODEL_MODULES = ("lobbyd.identity.models", "lobbyd.catalog.models")
 
 
 def import_all_models() -> None:

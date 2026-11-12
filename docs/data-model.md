@@ -36,6 +36,8 @@ erDiagram
 
 ## Catalog
 
+Implemented in phase 2. The migrations in `apps/api/migrations` are authoritative; this is the same schema with the reasoning attached.
+
 ```sql
 CREATE TABLE users (
     id            uuid PRIMARY KEY,
@@ -48,28 +50,33 @@ CREATE TABLE users (
 );
 
 CREATE TABLE venues (
-    id       uuid PRIMARY KEY,
-    name     text NOT NULL,
-    city     text NOT NULL,
-    timezone text NOT NULL            -- IANA name, for display only
+    id         uuid PRIMARY KEY,
+    owner_id   uuid NOT NULL REFERENCES users,   -- only the owner can run events here
+    name       text NOT NULL,
+    city       text NOT NULL,
+    timezone   text NOT NULL,                    -- IANA name, for display only
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE sections (
-    id        uuid PRIMARY KEY,
-    venue_id  uuid NOT NULL REFERENCES venues,
-    name      text NOT NULL,
-    sort      int  NOT NULL DEFAULT 0,
+    id         uuid PRIMARY KEY,
+    venue_id   uuid NOT NULL REFERENCES venues ON DELETE CASCADE,
+    name       text NOT NULL,
+    sort       int  NOT NULL,
+    seat_count int  NOT NULL,                    -- kept here so listing never counts seats
     UNIQUE (venue_id, name)
 );
 
 CREATE TABLE seats (
     id         uuid PRIMARY KEY,
-    venue_id   uuid NOT NULL REFERENCES venues,
-    section_id uuid NOT NULL REFERENCES sections,
+    venue_id   uuid NOT NULL REFERENCES venues ON DELETE CASCADE,
+    section_id uuid NOT NULL REFERENCES sections ON DELETE CASCADE,
     row_label  text NOT NULL,
+    row_sort   int  NOT NULL,                    -- rows keep the order they were entered in
     number     int  NOT NULL,
     UNIQUE (section_id, row_label, number)
 );
+CREATE INDEX seats_venue_id_idx ON seats (venue_id);
 
 CREATE TABLE tournaments (
     id            uuid PRIMARY KEY,
@@ -77,9 +84,10 @@ CREATE TABLE tournaments (
     venue_id      uuid REFERENCES venues,        -- null for online-only events
     slug          text NOT NULL UNIQUE,
     title         text NOT NULL,
-    game          text NOT NULL,
+    game          citext NOT NULL,               -- filter by game ignores case
     description   text NOT NULL DEFAULT '',
     team_size     int  NOT NULL CHECK (team_size >= 1),
+    currency      char(3) NOT NULL,              -- one per tournament: an order never mixes currencies
     starts_at     timestamptz NOT NULL,
     ends_at       timestamptz NOT NULL,
     sales_open_at timestamptz NOT NULL,
@@ -87,40 +95,71 @@ CREATE TABLE tournaments (
                   CHECK (status IN ('draft', 'published', 'live', 'completed', 'cancelled')),
     search        tsvector GENERATED ALWAYS AS (
                       setweight(to_tsvector('english', title), 'A') ||
-                      setweight(to_tsvector('english', game), 'A') ||
+                      setweight(to_tsvector('english', game::text), 'A') ||
                       setweight(to_tsvector('english', description), 'C')
                   ) STORED,
     created_at    timestamptz NOT NULL DEFAULT now(),
-    CHECK (ends_at > starts_at)
+    CHECK (ends_at > starts_at),
+    CHECK (ends_at <= starts_at + interval '14 days'),
+    CHECK (sales_open_at < starts_at)
 );
 
 CREATE INDEX tournaments_search_idx ON tournaments USING gin (search);
--- Browse: published events in date order, with (starts_at, id) as the pagination cursor.
-CREATE INDEX tournaments_browse_idx ON tournaments (starts_at, id) WHERE status = 'published';
+-- Browse: listed events in date order, with (starts_at, id) as the pagination cursor.
+CREATE INDEX tournaments_browse_idx ON tournaments (starts_at, id)
+    WHERE status IN ('published', 'live');
+-- The same, for one game.
+CREATE INDEX tournaments_game_browse_idx ON tournaments (game, starts_at, id)
+    WHERE status IN ('published', 'live');
+CREATE INDEX tournaments_organizer_id_idx ON tournaments (organizer_id, created_at);
+
+CREATE TABLE ticket_types (
+    id            uuid PRIMARY KEY,
+    tournament_id uuid NOT NULL REFERENCES tournaments ON DELETE CASCADE,
+    kind          text NOT NULL CHECK (kind IN ('competitor', 'reserved', 'general')),
+    name          text NOT NULL,
+    price_cents   int  NOT NULL CHECK (price_cents >= 0),
+    capacity      int  NOT NULL CHECK (capacity >= 1),  -- for 'reserved': seats in its sections
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tournament_id, name),
+    UNIQUE (id, tournament_id)                   -- target for the composite key below
+);
+-- A tournament has one set of team slots.
+CREATE UNIQUE INDEX ticket_types_one_competitor_idx ON ticket_types (tournament_id)
+    WHERE kind = 'competitor';
+
+-- Which venue sections a reserved-seating ticket type sells.
+CREATE TABLE ticket_type_sections (
+    ticket_type_id uuid NOT NULL,
+    section_id     uuid NOT NULL REFERENCES sections,
+    tournament_id  uuid NOT NULL,
+    PRIMARY KEY (ticket_type_id, section_id),
+    FOREIGN KEY (ticket_type_id, tournament_id)
+        REFERENCES ticket_types (id, tournament_id) ON DELETE CASCADE,
+    UNIQUE (tournament_id, section_id)           -- a section has one price per tournament
+);
 ```
 
-`seats` describes the physical venue and is reused across tournaments. What is for sale at a given tournament lives in the inventory tables below.
+**Notes**
+
+- `seats` describes the physical venue and is reused across tournaments. What is for sale at a given tournament lives in the inventory tables below.
+- The 14 day limit on length is a business rule that exists for a query: it lets "not ended yet" be answered from the `starts_at` index. See [query plans](query-plans.md).
+- `ticket_type_sections` copies `tournament_id` so the database can enforce "one ticket type per section per tournament" with a plain unique constraint. The composite foreign key guarantees the copy can never disagree with the ticket type.
+- Rules that span rows are constraints, not application checks, so they hold when two requests race: one competitor type per tournament, unique names, one price per section. The API maps each constraint to its own error code.
 
 ## Inventory
 
-There are two inventory shapes, and one table for each.
+Planned for phase 3. There are two inventory shapes.
 
 ```sql
-CREATE TABLE ticket_types (
-    id            uuid PRIMARY KEY,
-    tournament_id uuid NOT NULL REFERENCES tournaments,
-    kind          text NOT NULL
-                  CHECK (kind IN ('competitor', 'reserved', 'general')),
-    name          text NOT NULL,
-    price_cents   int  NOT NULL CHECK (price_cents >= 0),
-    currency      char(3) NOT NULL,
-    -- Counted inventory. Used by 'competitor' and 'general'.
-    -- For 'reserved', capacity is informational; the seat rows are the truth.
-    capacity      int  NOT NULL CHECK (capacity >= 0),
-    held_count    int  NOT NULL DEFAULT 0 CHECK (held_count >= 0),
-    sold_count    int  NOT NULL DEFAULT 0 CHECK (sold_count >= 0),
-    CONSTRAINT no_oversell CHECK (held_count + sold_count <= capacity),
-    UNIQUE (tournament_id, name)
+-- Counted inventory, for 'competitor' and 'general' ticket types.
+-- Owned by the inventory module, created when a tournament is published.
+CREATE TABLE inventory_counters (
+    ticket_type_id uuid PRIMARY KEY REFERENCES ticket_types,
+    capacity       int NOT NULL CHECK (capacity >= 0),
+    held_count     int NOT NULL DEFAULT 0 CHECK (held_count >= 0),
+    sold_count     int NOT NULL DEFAULT 0 CHECK (sold_count >= 0),
+    CONSTRAINT no_oversell CHECK (held_count + sold_count <= capacity)
 );
 
 CREATE TABLE tournament_seats (
@@ -145,6 +184,7 @@ CREATE INDEX tournament_seats_hold_idx ON tournament_seats (hold_id) WHERE hold_
 **Why these constraints exist**
 
 - `no_oversell` is the database's own guarantee for counted inventory. Whatever the application does, a transaction that would push held plus sold past capacity fails. Application logic is the first line of defence; this is the one that cannot be bypassed.
+- The counters live in their own table, not on `ticket_types`, because each module owns its tables: the catalog describes what is on sale, the inventory module tracks what is left.
 - The primary key `(tournament_id, seat_id)` means a seat exists once per tournament, so "claim this seat" is an update to exactly one row, and the row lock is what serialises competing buyers.
 - `held_until` lives on the seat row itself so a claim can treat an expired hold as available in the same statement, without waiting for a cleanup job. See [ADR 0002](adr/0002-claiming-inventory.md).
 
@@ -189,7 +229,7 @@ CREATE TABLE orders (
     status        text NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'paid', 'expired', 'cancelled', 'refunded')),
     total_cents   int  NOT NULL CHECK (total_cents >= 0),
-    currency      char(3) NOT NULL,
+    currency      char(3) NOT NULL,                        -- copied from the tournament
     created_at    timestamptz NOT NULL DEFAULT now(),
     paid_at       timestamptz
 );
@@ -355,7 +395,7 @@ Both tables grow without bound and are pruned by a scheduled job (idempotency ke
 
 These are the statements the concurrency tests assert after every run:
 
-1. For every ticket type, `held_count + sold_count <= capacity`.
+1. For every counted ticket type, `held_count + sold_count <= capacity`.
 2. For every tournament seat, at most one valid ticket exists.
 3. Every `sold` seat has exactly one valid ticket, and every valid seated ticket points at a `sold` seat.
 4. Every `paid` order has tickets equal in number to the sum of its item quantities.

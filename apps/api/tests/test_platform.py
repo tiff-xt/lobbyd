@@ -91,3 +91,10 @@ def test_uuid7_is_time_ordered_and_well_formed() -> None:
 def test_models_match_migrations(alembic_config: Config) -> None:
     """Fails if a model changed without a migration (or the reverse)."""
     command.check(alembic_config)
+
+
+async def test_api_docs_describe_the_real_error_format(client: AsyncClient) -> None:
+    schema = (await client.get("/openapi.json")).json()
+    signup = schema["paths"]["/auth/signup"]["post"]["responses"]["422"]
+    assert signup["content"]["application/problem+json"]["schema"]["$ref"].endswith("/Problem")
+    assert "HTTPValidationError" not in schema["components"]["schemas"]

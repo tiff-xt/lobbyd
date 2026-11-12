@@ -7,11 +7,49 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 log = structlog.get_logger()
 
 PROBLEM_JSON = "application/problem+json"
+
+
+class FieldError(BaseModel):
+    field: str
+    message: str
+
+
+class Problem(BaseModel):
+    """Shape of every error response (RFC 9457). Used for the API documentation."""
+
+    type: str
+    title: str
+    status: int
+    code: str = Field(description="Stable identifier to branch on. See docs/errors.md.")
+    detail: str
+    instance: str
+    errors: list[FieldError] | None = Field(
+        default=None, description="Present on validation errors."
+    )
+
+
+# Applied to every route so the docs show the real error format, not FastAPI's default.
+PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
+    422: {"model": Problem, "description": "The request is not valid"},
+}
+
+
+def use_problem_media_type(schema: dict[str, Any]) -> dict[str, Any]:
+    """FastAPI documents response models as application/json; ours are problem+json."""
+    for path in schema.get("paths", {}).values():
+        for operation in path.values():
+            for response in operation.get("responses", {}).values():
+                content = response.get("content", {})
+                ref = content.get("application/json", {}).get("schema", {}).get("$ref", "")
+                if ref.endswith("/Problem"):
+                    content[PROBLEM_JSON] = content.pop("application/json")
+    return schema
 
 
 class ProblemError(Exception):

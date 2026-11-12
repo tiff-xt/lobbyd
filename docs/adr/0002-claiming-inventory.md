@@ -35,9 +35,9 @@ UPDATE tournament_seats
 **Counted inventory (team slots, general admission):**
 
 ```sql
-UPDATE ticket_types
+UPDATE inventory_counters
    SET held_count = held_count + :n
- WHERE id = :type
+ WHERE ticket_type_id = :type
    AND held_count + sold_count + :n <= capacity;
 -- If no row updated: sold out, return 409.
 ```

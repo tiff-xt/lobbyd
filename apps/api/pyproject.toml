@@ -17,7 +17,12 @@ dependencies = [
     "argon2-cffi>=23.1",
     "pyjwt>=2.10",
     "structlog>=24.4",
+    "tzdata>=2024.2",
 ]
+
+[project.scripts]
+lobbyd-seed = "lobbyd.seed:main"
+lobbyd-admin = "lobbyd.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -36,10 +41,11 @@ asyncio_default_test_loop_scope = "session"
 root_package = "lobbyd"
 
 [[tool.importlinter.contracts]]
-name = "platform is the bottom layer and knows nothing about feature modules"
+name = "modules depend only on the layers beneath them"
 type = "layers"
 layers = [
-    "lobbyd.main",
+    "lobbyd.main | lobbyd.seed | lobbyd.cli",
+    "lobbyd.catalog",
     "lobbyd.identity",
     "lobbyd.platform",
 ]

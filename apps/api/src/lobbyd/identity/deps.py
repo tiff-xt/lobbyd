@@ -46,6 +46,20 @@ async def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
+async def get_optional_user(
+    session: SessionDep,
+    settings: SettingsDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> User | None:
+    """For public endpoints that show more to a signed-in user. A bad token is still an error."""
+    if credentials is None:
+        return None
+    return await get_current_user(session, settings, credentials)
+
+
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+
+
 def require_role(*roles: str) -> Callable[[User], Awaitable[User]]:
     """Dependency factory: the current user must hold one of `roles`. Admins always pass."""
 

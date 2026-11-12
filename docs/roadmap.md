@@ -6,7 +6,7 @@ Each phase ends with something that runs and is tested. A phase is done when its
 | --- | --- | --- |
 | 0 | Design | Done |
 | 1 | Foundations | Done |
-| 2 | Catalog | Not started |
+| 2 | Catalog | Done |
 | 3 | Booking core | Not started |
 | 4 | Payments and reliability | Not started |
 | 5 | Performance under load | Not started |
