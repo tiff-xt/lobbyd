@@ -3,6 +3,7 @@
 The schema is built by running the migrations, so they are tested too.
 """
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 
@@ -52,7 +53,26 @@ def _schema(alembic_config: Config) -> None:
 async def app(settings: Settings, _schema: None) -> AsyncIterator[FastAPI]:
     app = create_app(settings)
     async with app.router.lifespan_context(app):
+        await _warm_pool(app, settings)
         yield app
+
+
+async def _warm_pool(app: FastAPI, settings: Settings) -> None:
+    """Open every pooled connection before any test runs.
+
+    Opening a connection takes far longer than a query. With a cold pool, the
+    first request of a "simultaneous" burst finishes before the others have
+    even connected, and a concurrency test quietly runs one buyer at a time.
+    """
+
+    async def hold_one() -> None:
+        async with app.state.engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+            await asyncio.sleep(0.2)  # keep it checked out so the next task opens another
+
+    await asyncio.gather(
+        *(hold_one() for _ in range(settings.db_pool_size + settings.db_max_overflow))
+    )
 
 
 @pytest.fixture

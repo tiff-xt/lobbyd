@@ -75,6 +75,18 @@ class ProblemError(Exception):
         self.extra = extra
 
 
+def problem_body(path: str, status: int, code: str, detail: str, **extra: Any) -> dict[str, Any]:
+    return {
+        "type": f"https://github.com/tiff-xt/lobbyd/blob/main/docs/errors.md#{code}",
+        "title": HTTPStatus(status).phrase,
+        "status": status,
+        "code": code,
+        "detail": detail,
+        "instance": path,
+        **extra,
+    }
+
+
 def _problem(
     request: Request,
     status: int,
@@ -83,15 +95,7 @@ def _problem(
     headers: dict[str, str] | None = None,
     **extra: Any,
 ) -> JSONResponse:
-    body: dict[str, Any] = {
-        "type": f"https://github.com/tiff-xt/lobbyd/blob/main/docs/errors.md#{code}",
-        "title": HTTPStatus(status).phrase,
-        "status": status,
-        "code": code,
-        "detail": detail,
-        "instance": request.url.path,
-        **extra,
-    }
+    body = problem_body(request.url.path, status, code, detail, **extra)
     return JSONResponse(body, status_code=status, media_type=PROBLEM_JSON, headers=headers)
 
 

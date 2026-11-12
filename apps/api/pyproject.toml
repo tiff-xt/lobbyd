@@ -23,6 +23,7 @@ dependencies = [
 [project.scripts]
 lobbyd-seed = "lobbyd.seed:main"
 lobbyd-admin = "lobbyd.cli:main"
+lobbyd-worker = "lobbyd.worker:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -44,7 +45,10 @@ root_package = "lobbyd"
 name = "modules depend only on the layers beneath them"
 type = "layers"
 layers = [
-    "lobbyd.main | lobbyd.seed | lobbyd.cli",
+    "lobbyd.main | lobbyd.seed | lobbyd.cli | lobbyd.worker",
+    "lobbyd.wiring",
+    "lobbyd.orders",
+    "lobbyd.inventory | lobbyd.tickets",
     "lobbyd.catalog",
     "lobbyd.identity",
     "lobbyd.platform",

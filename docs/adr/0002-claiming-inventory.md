@@ -1,6 +1,6 @@
 # 0002. Claim inventory with conditional writes in Postgres
 
-**Status:** Accepted, to be validated by benchmark (phase 5)
+**Status:** Accepted and implemented (phase 3). Strategy comparison by benchmark still to come (phase 5)
 
 ## Context
 
@@ -45,15 +45,33 @@ UPDATE inventory_counters
 ### Why this option
 
 - **The check and the write are one statement,** so there is no window between "looks free" and "claimed".
-- **Expiry is part of the precondition.** An expired hold is claimable the moment it expires, with no dependency on a cleanup job. The sweeper only tidies up (marks the hold expired, corrects counters, triggers waitlist offers). If the sweeper stops, seats do not get stuck. Counted inventory is the exception: its counters are only released by the sweeper, so sweeper lag there delays availability (it can never cause overselling). That lag is a metric with an alert.
+- **Expiry is part of the precondition.** A seat whose hold has lapsed is claimable the moment it lapses, with no dependency on a cleanup job. If the sweeper stops, seats do not get stuck.
 - **One source of truth.** With option C, Redis and Postgres can disagree after a failover or an eviction, and the disagreement shows up as a double sale. Keeping the claim in the same database, and the same transaction, as the hold and order records removes that class of bug.
-- **The schema backs it up.** `no_oversell` and the unique index on valid tickets per seat mean a bug in this logic produces an error, not an oversold event.
+- **The schema backs it up.** `no_oversell` and the unique index on valid tickets per seat mean a bug in this logic produces an error, not an oversold event. This was verified: with the capacity condition deleted from the claim, the test suite fails with database errors and nothing is oversold.
+
+### Counters cannot see the clock
+
+A seat row carries its own deadline, so a lapsed seat frees itself. A counter is just a number: the places held by a lapsed hold stay counted until something subtracts them. Waiting for the sweeper would make buyers depend on a background job.
+
+So the claim does it on demand. If a counter looks too full for the request, the claim first closes that tournament's lapsed holds (`FOR UPDATE SKIP LOCKED`, so it never waits on a hold someone is checking out), returns their places, and then claims. Counted inventory is therefore also available as soon as a hold lapses, sweeper or no sweeper.
 
 ### Lock order
 
-A multi-row update locks rows as it finds them, so two overlapping claims can deadlock. Claims therefore lock their seats in ascending `seat_id` order first (`SELECT ... ORDER BY seat_id FOR UPDATE`) before the update. Postgres would detect and break a deadlock anyway, but a fixed order avoids paying the detection timeout during a spike.
+Deadlocks happen when two transactions each hold a lock the other wants. They cannot happen if everyone takes locks in the same order, so every code path in the inventory module follows one:
 
-A variant to measure in the benchmark: take those locks with `SKIP LOCKED` and fail at once if any seat is missing from the result. A seat locked by another in-flight claim is almost certainly about to be taken, so the loser gets its answer without queueing. The cost is an occasional false "taken" when the other claim rolls back.
+1. the caller's own hold row
+2. other people's lapsed holds, with `SKIP LOCKED` (never waited for)
+3. counter rows, ascending by ticket type id
+4. seat rows, ascending by seat id
+
+Two details matter:
+
+- **Counters before seats.** Reclaiming lapsed holds touches counters, and it has to happen before the seat claim, so counters come first everywhere.
+- **All of a tournament's counters at once.** When a claim is going to close other holds, it does not yet know which counters that will touch. It locks every counter of the tournament, in order, before touching any. Everything it needs afterwards it already has.
+
+Tidying that is optional (the sweeper resetting lapsed seat rows) uses `SKIP LOCKED`. It never waits, so it cannot be part of a deadlock.
+
+This was verified too. With seats locked one at a time in the order the buyer listed them, the concurrency tests fail and Postgres logs dozens of detected deadlocks. With the order above: none, across repeated runs.
 
 ### Completing a purchase
 
@@ -64,7 +82,8 @@ UPDATE tournament_seats
    SET status = 'sold', hold_id = NULL, held_until = NULL
  WHERE tournament_id = :t AND hold_id = :hold AND status = 'held';
 -- If rows updated <> seats in the hold: the hold lapsed and someone else
--- claimed a seat. ROLLBACK, mark the order expired, refund the payment.
+-- claimed a seat. ROLLBACK and refuse the checkout. (From phase 4, with real
+-- payments: mark the order expired and refund.)
 ```
 
 The seat row still pointing at this hold is the proof the buyer still owns it. No clock comparison is needed at this step, which also means a buyer whose hold lapsed a moment ago still gets their seats if nobody else took them.
@@ -78,8 +97,10 @@ The seat row still pointing at this hold is the proof the buyer still owns it. N
 ## Consequences
 
 - Losers still take a brief row lock before they fail. Under extreme contention on a handful of rows that is a queue. The waiting room ([0005](0005-waiting-room-and-rate-limits.md)) bounds how deep it can get, and showing only available seats steers users apart.
-- The counter row for a ticket type is a single hot row. That is acceptable for hundreds of updates per second. If the benchmark shows it is the bottleneck, the alternative is one row per slot claimed with `FOR UPDATE SKIP LOCKED`, which spreads contention across rows.
+- The counter row for a ticket type is a single hot row, and because counters are locked first, a basket that includes counted items queues behind it before reaching its seats. If the benchmark shows this is the bottleneck, the alternative is one row per place claimed with `FOR UPDATE SKIP LOCKED`, which spreads contention across rows.
+- Seat rows of a lapsed hold keep saying `held` until someone claims them or the sweeper resets them. Every reader therefore has to compare `held_until` with the clock, never just read `status`. One shared expression in the code does this, used for both availability and the claim.
 - Availability reads can be slightly stale (cache, replica). That is safe: a stale read can cause a failed claim, never a wrong sale.
+- All time comparisons use the database's clock, never an application server's.
 
 ## Validation
 

@@ -2,6 +2,7 @@
 
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from lobbyd.catalog.hooks import run_publish_hooks
 from lobbyd.catalog.models import (
     LISTED_SQL,
     MAX_DURATION,
@@ -491,5 +493,81 @@ async def publish(session: AsyncSession, slug: str, user: User) -> TournamentOut
     await session.execute(
         update(Tournament).where(Tournament.id == tournament.id).values(status="published")
     )
+    # Other modules prepare what they need (inventory puts the seats on sale)
+    # in this same transaction.
+    await run_publish_hooks(session, await get_sale_info(session, slug))
     log.info("tournament_published", slug=slug)
     return _detail(await _load(session, slug))
+
+
+# --- interface for other modules ---------------------------------------------
+# Modules above the catalog use these instead of reading its tables.
+
+
+@dataclass(frozen=True)
+class TicketTypeInfo:
+    id: uuid.UUID
+    kind: str
+    name: str
+    price_cents: int
+    capacity: int
+
+
+@dataclass(frozen=True)
+class SaleInfo:
+    """What the booking modules need to know about a tournament."""
+
+    tournament_id: uuid.UUID
+    slug: str
+    status: str
+    currency: str
+    sales_open_at: datetime
+    ends_at: datetime
+    ticket_types: dict[uuid.UUID, TicketTypeInfo]
+
+
+async def get_sale_info(session: AsyncSession, slug: str) -> SaleInfo:
+    """Raises tournament_not_found for a missing tournament or a draft."""
+    tournament = (
+        await session.execute(
+            select(
+                Tournament.id,
+                Tournament.status,
+                Tournament.currency,
+                Tournament.sales_open_at,
+                Tournament.ends_at,
+            ).where(Tournament.slug == slug, Tournament.status != "draft")
+        )
+    ).one_or_none()
+    if tournament is None:
+        raise _tournament_not_found()
+    ticket_types = await session.execute(
+        select(
+            TicketType.id,
+            TicketType.kind,
+            TicketType.name,
+            TicketType.price_cents,
+            TicketType.capacity,
+        ).where(TicketType.tournament_id == tournament.id)
+    )
+    return SaleInfo(
+        tournament_id=tournament.id,
+        slug=slug,
+        status=tournament.status,
+        currency=tournament.currency,
+        sales_open_at=tournament.sales_open_at,
+        ends_at=tournament.ends_at,
+        ticket_types={row.id: TicketTypeInfo(*row) for row in ticket_types},
+    )
+
+
+async def seat_assignments(
+    session: AsyncSession, tournament_id: uuid.UUID
+) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """(seat_id, ticket_type_id) for every seat sold as reserved seating."""
+    rows = await session.execute(
+        select(Seat.id, TicketTypeSection.ticket_type_id)
+        .join(TicketTypeSection, TicketTypeSection.section_id == Seat.section_id)
+        .where(TicketTypeSection.tournament_id == tournament_id)
+    )
+    return [(seat_id, ticket_type_id) for seat_id, ticket_type_id in rows]

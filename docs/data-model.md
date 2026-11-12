@@ -149,21 +149,22 @@ CREATE TABLE ticket_type_sections (
 
 ## Inventory
 
-Planned for phase 3. There are two inventory shapes.
+Implemented in phase 3. There are two inventory shapes, created when a tournament is published.
 
 ```sql
 -- Counted inventory, for 'competitor' and 'general' ticket types.
--- Owned by the inventory module, created when a tournament is published.
 CREATE TABLE inventory_counters (
-    ticket_type_id uuid PRIMARY KEY REFERENCES ticket_types,
+    ticket_type_id uuid PRIMARY KEY REFERENCES ticket_types ON DELETE CASCADE,
+    tournament_id  uuid NOT NULL REFERENCES tournaments ON DELETE CASCADE,
     capacity       int NOT NULL CHECK (capacity >= 0),
     held_count     int NOT NULL DEFAULT 0 CHECK (held_count >= 0),
     sold_count     int NOT NULL DEFAULT 0 CHECK (sold_count >= 0),
     CONSTRAINT no_oversell CHECK (held_count + sold_count <= capacity)
 );
 
+-- Reserved seating: one row per seat per tournament.
 CREATE TABLE tournament_seats (
-    tournament_id  uuid NOT NULL REFERENCES tournaments,
+    tournament_id  uuid NOT NULL REFERENCES tournaments ON DELETE CASCADE,
     seat_id        uuid NOT NULL REFERENCES seats,
     ticket_type_id uuid NOT NULL REFERENCES ticket_types,
     status         text NOT NULL DEFAULT 'available'
@@ -177,8 +178,9 @@ CREATE TABLE tournament_seats (
         AND (hold_id IS NULL) = (held_until IS NULL)
     )
 );
-
-CREATE INDEX tournament_seats_hold_idx ON tournament_seats (hold_id) WHERE hold_id IS NOT NULL;
+CREATE INDEX tournament_seats_hold_id_idx ON tournament_seats (hold_id) WHERE hold_id IS NOT NULL;
+-- Lets the sweeper find lapsed seats without scanning every seat.
+CREATE INDEX tournament_seats_held_until_idx ON tournament_seats (held_until) WHERE status = 'held';
 ```
 
 **Why these constraints exist**
@@ -186,7 +188,9 @@ CREATE INDEX tournament_seats_hold_idx ON tournament_seats (hold_id) WHERE hold_
 - `no_oversell` is the database's own guarantee for counted inventory. Whatever the application does, a transaction that would push held plus sold past capacity fails. Application logic is the first line of defence; this is the one that cannot be bypassed.
 - The counters live in their own table, not on `ticket_types`, because each module owns its tables: the catalog describes what is on sale, the inventory module tracks what is left.
 - The primary key `(tournament_id, seat_id)` means a seat exists once per tournament, so "claim this seat" is an update to exactly one row, and the row lock is what serialises competing buyers.
-- `held_until` lives on the seat row itself so a claim can treat an expired hold as available in the same statement, without waiting for a cleanup job. See [ADR 0002](adr/0002-claiming-inventory.md).
+- `held_until` lives on the seat row itself so a claim can treat a lapsed hold as available in the same statement, without waiting for a cleanup job. See [ADR 0002](adr/0002-claiming-inventory.md).
+
+A seat's `status` alone does not say whether it is free: a row can read `held` after its deadline has passed. A seat is free when it is `available`, or `held` with `held_until` in the past.
 
 ## Holds
 
@@ -195,30 +199,35 @@ CREATE TABLE holds (
     id            uuid PRIMARY KEY,
     user_id       uuid NOT NULL REFERENCES users,
     tournament_id uuid NOT NULL REFERENCES tournaments,
+    currency      char(3) NOT NULL,
     status        text NOT NULL DEFAULT 'active'
                   CHECK (status IN ('active', 'converted', 'expired', 'released')),
     expires_at    timestamptz NOT NULL,
     created_at    timestamptz NOT NULL DEFAULT now()
 );
 
--- The expiry sweeper's only query.
+-- The sweeper's only query.
 CREATE INDEX holds_expiry_idx ON holds (expires_at) WHERE status = 'active';
--- "Does this user already have an active hold here?" (one per user per tournament)
+-- One open hold per user per tournament.
 CREATE UNIQUE INDEX holds_one_active_idx ON holds (user_id, tournament_id) WHERE status = 'active';
 
 CREATE TABLE hold_items (
-    id             uuid PRIMARY KEY,
-    hold_id        uuid NOT NULL REFERENCES holds ON DELETE CASCADE,
-    ticket_type_id uuid NOT NULL REFERENCES ticket_types,
-    seat_id        uuid REFERENCES seats,          -- set for reserved seating
-    quantity       int  NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+    id               uuid PRIMARY KEY,
+    hold_id          uuid NOT NULL REFERENCES holds ON DELETE CASCADE,
+    ticket_type_id   uuid NOT NULL REFERENCES ticket_types,
+    seat_id          uuid REFERENCES seats,        -- set for reserved seating
+    quantity         int  NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+    unit_price_cents int  NOT NULL,                -- price when held is the price charged
     CHECK (seat_id IS NULL OR quantity = 1)
 );
+CREATE INDEX hold_items_hold_id_idx ON hold_items (hold_id);
 ```
 
-`holds_one_active_idx` stops one account from hoarding inventory across many holds. Because expiry is lazy, a user's old hold can still say `active` after its time has passed; creating a new hold first closes the user's own lapsed hold in the same transaction, so the index never locks anyone out.
+`holds_one_active_idx` stops one account from hoarding inventory across many holds, and it settles the race when one user sends two hold requests at once: the second insert fails on the index. Because expiry is lazy, a user's old hold can still say `active` after its time has passed; creating a new hold first closes the user's own lapsed hold in the same transaction, so the index never locks anyone out.
 
-## Orders and payments
+## Orders and tickets
+
+Implemented in phase 3 with payment stubbed (an order is created already paid). The `payments` and `payment_events` tables arrive with real payments in phase 4.
 
 ```sql
 CREATE TABLE orders (
@@ -233,19 +242,44 @@ CREATE TABLE orders (
     created_at    timestamptz NOT NULL DEFAULT now(),
     paid_at       timestamptz
 );
-
-CREATE INDEX orders_user_idx ON orders (user_id, created_at DESC);
+CREATE INDEX orders_user_id_idx ON orders (user_id, created_at);
 
 CREATE TABLE order_items (
     id               uuid PRIMARY KEY,
-    order_id         uuid NOT NULL REFERENCES orders,
+    order_id         uuid NOT NULL REFERENCES orders ON DELETE CASCADE,
     ticket_type_id   uuid NOT NULL REFERENCES ticket_types,
     seat_id          uuid REFERENCES seats,
-    team_id          uuid,                         -- set for competitor slots
-    quantity         int  NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+    quantity         int  NOT NULL CHECK (quantity >= 1),
     unit_price_cents int  NOT NULL                 -- price at time of purchase
 );
+CREATE INDEX order_items_order_id_idx ON order_items (order_id);
 
+CREATE TABLE tickets (
+    id             uuid PRIMARY KEY,
+    order_id       uuid NOT NULL,
+    order_item_id  uuid NOT NULL,
+    tournament_id  uuid NOT NULL REFERENCES tournaments,
+    ticket_type_id uuid NOT NULL REFERENCES ticket_types,
+    seat_id        uuid REFERENCES seats,
+    holder_id      uuid NOT NULL REFERENCES users,
+    status         text NOT NULL DEFAULT 'valid' CHECK (status IN ('valid', 'void')),
+    checked_in_at  timestamptz,
+    issued_at      timestamptz NOT NULL DEFAULT now()
+);
+-- Second line of defence: two valid tickets for one seat cannot exist.
+CREATE UNIQUE INDEX tickets_one_per_seat_idx
+    ON tickets (tournament_id, seat_id) WHERE status = 'valid' AND seat_id IS NOT NULL;
+CREATE INDEX tickets_order_id_idx ON tickets (order_id);
+CREATE INDEX tickets_holder_id_idx ON tickets (holder_id);
+```
+
+- `orders.hold_id` is unique, so even a double submit that slipped past everything else cannot create a second order for one hold.
+- `unit_price_cents` is copied onto the order item so that changing a ticket type's price later never rewrites history.
+- Checkout moves inventory from held to sold, records the order, and issues the tickets in one transaction.
+
+Planned for phase 4:
+
+```sql
 CREATE TABLE payments (
     id           uuid PRIMARY KEY,
     order_id     uuid NOT NULL REFERENCES orders,
@@ -266,8 +300,6 @@ CREATE TABLE payment_events (
     received_at       timestamptz NOT NULL DEFAULT now()
 );
 ```
-
-`unit_price_cents` is copied onto the order item so that changing a ticket type's price later never rewrites history.
 
 ## Teams and waitlist
 
@@ -312,24 +344,11 @@ CREATE TABLE waitlist_entries (
 CREATE INDEX waitlist_next_idx ON waitlist_entries (tournament_id, created_at) WHERE status = 'waiting';
 ```
 
-## Tickets and check-in
+## Check-in
+
+Planned for phase 7. The `tickets` table is above.
 
 ```sql
-CREATE TABLE tickets (
-    id            uuid PRIMARY KEY,
-    order_item_id uuid NOT NULL REFERENCES order_items,
-    tournament_id uuid NOT NULL REFERENCES tournaments,
-    seat_id       uuid REFERENCES seats,
-    holder_id     uuid NOT NULL REFERENCES users,
-    status        text NOT NULL DEFAULT 'valid' CHECK (status IN ('valid', 'void')),
-    checked_in_at timestamptz,
-    issued_at     timestamptz NOT NULL DEFAULT now()
-);
-
--- Second line of defence: two valid tickets for one seat cannot exist.
-CREATE UNIQUE INDEX tickets_one_per_seat_idx
-    ON tickets (tournament_id, seat_id) WHERE status = 'valid' AND seat_id IS NOT NULL;
-
 CREATE TABLE checkin_scans (
     id         uuid PRIMARY KEY,                   -- generated by the scanner, so re-uploads deduplicate
     ticket_id  uuid NOT NULL REFERENCES tickets,
@@ -367,16 +386,16 @@ Match results are edited rarely and by few people, so a version column (reject t
 ## Platform tables
 
 ```sql
-CREATE TABLE idempotency_keys (
+CREATE TABLE idempotency_keys (                    -- implemented in phase 3
     user_id       uuid NOT NULL,
     key           text NOT NULL,
-    request_hash  bytea NOT NULL,                  -- same key, different body is an error
-    status        text NOT NULL CHECK (status IN ('in_progress', 'completed')),
+    request_hash  bytea NOT NULL,                  -- same key, different request is an error
     response_code int,
-    response_body jsonb,
+    response_body text,                            -- exact text first sent, replayed as is
     created_at    timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, key)
 );
+CREATE INDEX idempotency_keys_created_at_idx ON idempotency_keys (created_at);  -- for pruning
 
 CREATE TABLE outbox (
     id           uuid PRIMARY KEY,                 -- UUIDv7, so id order is creation order
@@ -393,13 +412,18 @@ Both tables grow without bound and are pruned by a scheduled job (idempotency ke
 
 ## Invariants
 
-These are the statements the concurrency tests assert after every run:
+These must be true whenever no request is in flight. The concurrency tests check every one of them after every run (`apps/api/tests/invariants.py`), with one query per rule that returns the rows breaking it.
 
-1. For every counted ticket type, `held_count + sold_count <= capacity`.
-2. For every tournament seat, at most one valid ticket exists.
-3. Every `sold` seat has exactly one valid ticket, and every valid seated ticket points at a `sold` seat.
-4. Every `paid` order has tickets equal in number to the sum of its item quantities.
-5. No payment `provider_ref` or webhook event id is recorded twice.
-6. No handle appears on two teams in one tournament.
+1. No counter has held plus sold above its capacity. *(constraint)*
+2. Each counter's `held_count` equals what its active holds add up to, and its `sold_count` equals its number of valid tickets.
+3. No seat has more than one valid ticket. *(constraint)*
+4. Every sold seat has a valid ticket, and every valid seated ticket is for a sold seat.
+5. No held seat belongs to a hold that was checked out or released.
+6. Every active hold that is still in time owns all of its seats.
+7. Every paid order has as many valid tickets as it bought, and its total equals its items.
+8. Every checked-out hold has exactly one order, and no order exists for any other hold. *(one order per hold is a constraint)*
+9. No user has two active holds for one tournament. *(constraint)*
+10. No payment `provider_ref` or webhook event id is recorded twice. *(constraint, phase 4)*
+11. No handle appears on two teams in one tournament. *(constraint, phase 6)*
 
-Invariants 1, 2, 5, and 6 are enforced by constraints. Invariants 3 and 4 span tables, so they are enforced by doing the work in one transaction and verified by tests and a reconciliation job.
+Rules marked as constraints cannot be broken by any code path. The others span tables, so they are upheld by doing the work in one transaction and verified by the tests; phase 4 adds a reconciliation job that runs the same queries in production.

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     access_token_ttl_seconds: int = 15 * 60
     refresh_token_ttl_seconds: int = 30 * 24 * 60 * 60
 
+    # How long a hold keeps inventory off sale while the buyer checks out.
+    hold_ttl_seconds: int = 10 * 60
+
     log_json: bool = False
 
     @model_validator(mode="after")

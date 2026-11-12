@@ -192,6 +192,7 @@ All write endpoints that create something accept `Idempotency-Key`. Lists use cu
 | `GET /tournaments/{slug}` | Detail, ticket types |
 | `GET /tournaments/{slug}/seats` | Seat map layout (long cache) |
 | `GET /tournaments/{slug}/availability` | Seat and slot availability (short cache) |
+| `GET /users/me/orders` | Order history |
 | `POST /tournaments/{slug}/queue` | Join the waiting room, receive a position, later an admission token |
 | `POST /holds` | Claim seats, a quantity, or a team slot |
 | `DELETE /holds/{id}` | Release early |

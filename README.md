@@ -4,7 +4,7 @@ Ticketing and registration backend for gaming tournaments and LAN events. FastAP
 
 Teams register for a limited number of competitor slots, spectators pick seats from a venue map, everyone pays, and tickets are scanned at the door. Popular tournaments sell out in seconds, so the interesting part is staying correct and fast when thousands of people want the same seats at once.
 
-> **Status: phase 2 of 9 complete.** Accounts, venues with seat maps, tournaments, ticket types, search, and browsing work. Booking (holds, orders, tickets) is phase 3. The [roadmap](docs/roadmap.md) tracks progress.
+> **Status: phase 3 of 9 complete.** You can browse tournaments, hold seats and tickets, check out, and receive tickets, and it stays correct with hundreds of buyers competing for the same seats at once. Payment is a stub that always succeeds; real payment flows are phase 4. The [roadmap](docs/roadmap.md) tracks progress.
 
 ## Why this project exists
 
@@ -33,6 +33,18 @@ Teams register for a limited number of competitor slots, spectators pick seats f
 
 **Free tooling only.** Everything here is open source and runs locally with Docker Compose at no cost. The hosted demo uses free tiers only, and nothing in the project requires a paid plan or a credit card.
 
+## How overselling is prevented
+
+The short version, with the details in [ADR 0002](docs/adr/0002-claiming-inventory.md):
+
+1. **A claim is one conditional write.** "Is it free?" and "take it" are a single SQL statement, so no other buyer can get in between.
+2. **Deadlines live on the data.** A seat whose hold has lapsed is free the instant it lapses. No background job has to run for it to go back on sale.
+3. **Locks are always taken in the same order,** so simultaneous buyers queue instead of deadlocking.
+4. **The database refuses to oversell.** Constraints make an oversold counter or a second ticket for one seat impossible to store, whatever the application does.
+5. **Retries are safe.** Every booking request carries an idempotency key; sending it twice returns the first answer and does nothing more.
+
+The tests fire up to 400 simultaneous buyers at one sale and then check 13 statements that must hold across the tables. Each safeguard was also deleted on purpose to confirm the tests fail without it.
+
 ## Running it
 
 **Everything in Docker** (needs only Docker):
@@ -43,7 +55,7 @@ docker compose up --build
 
 The API is then at http://localhost:8000, with interactive docs at http://localhost:8000/docs.
 
-To fill it with demo data (three venues including a 12,000 seat arena, 60 tournaments, and an organizer login that it prints):
+To fill it with demo data (three venues including a 12,000 seat arena, 60 bookable tournaments, and organizer and buyer logins that it prints):
 
 ```bash
 docker compose run --rm api lobbyd-seed
@@ -79,6 +91,10 @@ apps/api/            FastAPI application
     platform/        shared plumbing: database, cache, errors, logging, ids
     identity/        accounts, login, tokens, roles
     catalog/         venues, seat maps, tournaments, ticket types, search
+    inventory/       availability, holds, the claim logic
+    orders/          checkout
+    tickets/         issued tickets
+    worker.py        housekeeping loop (closes lapsed holds)
   migrations/        Alembic migrations (the schema's source of truth)
   tests/
 docs/                design, data model, decision records, roadmap

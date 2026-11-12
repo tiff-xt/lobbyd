@@ -53,5 +53,13 @@ services:
       timeout: 3s
       retries: 10
 
+  # Housekeeping: closes lapsed holds and returns their inventory promptly.
+  worker:
+    build: *api-build
+    command: ["lobbyd-worker"]
+    environment: *api-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
 volumes:
   pgdata:

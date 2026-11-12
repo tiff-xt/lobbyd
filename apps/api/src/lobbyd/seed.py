@@ -22,12 +22,19 @@ from lobbyd.catalog.slug import slugify
 from lobbyd.config import get_settings
 from lobbyd.identity import service as identity
 from lobbyd.identity.models import User
+from lobbyd.inventory import service as inventory
+from lobbyd.inventory.models import InventoryCounter
 from lobbyd.platform.db import Base, create_engine, create_sessionmaker
 from lobbyd.platform.ids import uuid7
 from lobbyd.platform.models import import_all_models
 
+VENUE_TOURNAMENTS = 60
+
 ORGANIZER_EMAIL = "organizer@example.com"
 ORGANIZER_PASSWORD = "organizer-demo-password"  # noqa: S105 - local demo data only
+
+BUYER_EMAIL = "buyer@example.com"
+BUYER_PASSWORD = "buyer-demo-password"  # noqa: S105 - local demo data only
 
 GAMES = [
     ("Starfall Tactics", 5),
@@ -87,7 +94,11 @@ async def _tournaments(
 
     for index in range(count):
         game, team_size = rng.choice(GAMES)
-        venue = rng.choice([*venues, None])  # a quarter are online only
+        # A quarter are online only. Past the first few dozen, all of them are:
+        # every venue tournament puts thousands of seat rows on sale, and a
+        # 50,000 tournament dataset for studying query plans does not need
+        # hundreds of millions of them.
+        venue = rng.choice([*venues, None]) if index < VENUE_TOURNAMENTS else None
         title = (
             f"{game} {rng.choice(SEASONS)} {rng.choice(EVENTS)} "
             f"{venue.city if venue else rng.choice(CITIES)} #{index + 1}"
@@ -111,7 +122,8 @@ async def _tournaments(
                 "currency": "EUR" if venue is None or venue.city == "Berlin" else "USD",
                 "starts_at": starts_at,
                 "ends_at": starts_at + timedelta(hours=rng.choice([8, 12, 36, 60])),
-                "sales_open_at": starts_at - timedelta(days=rng.randint(14, 60)),
+                # Always already open, so everything upcoming in the demo is bookable.
+                "sales_open_at": min(starts_at, now) - timedelta(days=rng.randint(14, 60)),
                 "status": "draft" if rng.random() < 0.1 else "published",
             }
         )
@@ -153,13 +165,32 @@ async def _tournaments(
                 for section in sections
             )
 
+    # Put the published ones on sale. Online-only tournaments just need their
+    # counters, inserted in bulk; ones with a venue go through the same code
+    # that runs when an organizer publishes.
+    published = {t["id"] for t in tournaments if t["status"] == "published"}
+    with_venue = {t["id"]: t["slug"] for t in tournaments if t["venue_id"] and t["id"] in published}
+    counters = [
+        {
+            "ticket_type_id": ticket_type["id"],
+            "tournament_id": ticket_type["tournament_id"],
+            "capacity": ticket_type["capacity"],
+        }
+        for ticket_type in ticket_types
+        if ticket_type["tournament_id"] in published
+        and ticket_type["tournament_id"] not in with_venue
+    ]
+
     for table, rows in (
         (Tournament, tournaments),
         (TicketType, ticket_types),
         (TicketTypeSection, links),
+        (InventoryCounter, counters),
     ):
         for start in range(0, len(rows), 5000):
             await session.execute(insert(table), rows[start : start + 5000])
+    for slug in with_venue.values():
+        await inventory.open_inventory(session, await catalog.get_sale_info(session, slug))
 
 
 async def seed(*, tournaments: int, random_seed: int, reset: bool) -> None:
@@ -184,6 +215,9 @@ async def seed(*, tournaments: int, random_seed: int, reset: bool) -> None:
                 password=ORGANIZER_PASSWORD,
             )
             organizer.role = "organizer"
+            await identity.create_user(
+                session, email=BUYER_EMAIL, display_name="Demo Buyer", password=BUYER_PASSWORD
+            )
             venues = [await catalog.create_venue(session, organizer, venue) for venue in VENUES]
             await _tournaments(session, organizer, venues, tournaments, random.Random(random_seed))  # noqa: S311
             # Fresh statistics, so the planner sees the data it is about to query.
@@ -195,6 +229,7 @@ async def seed(*, tournaments: int, random_seed: int, reset: bool) -> None:
     sys.stdout.write(
         f"Seeded {len(venues)} venues ({seats:,} seats) and {tournaments:,} tournaments.\n"
         f"Organizer login: {ORGANIZER_EMAIL} / {ORGANIZER_PASSWORD}\n"
+        f"Buyer login:     {BUYER_EMAIL} / {BUYER_PASSWORD}\n"
     )
 
 

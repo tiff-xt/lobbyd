@@ -9,6 +9,8 @@ from fastapi import FastAPI
 from lobbyd.catalog.router import router as catalog_router
 from lobbyd.config import Settings, get_settings
 from lobbyd.identity.router import router as identity_router
+from lobbyd.inventory.router import router as inventory_router
+from lobbyd.orders.router import router as orders_router
 from lobbyd.platform import health
 from lobbyd.platform.cache import create_redis
 from lobbyd.platform.db import create_engine, create_sessionmaker
@@ -18,11 +20,13 @@ from lobbyd.platform.errors import (
     use_problem_media_type,
 )
 from lobbyd.platform.logging import RequestContextMiddleware, configure_logging
+from lobbyd.wiring import wire_modules
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(json=settings.log_json)
+    wire_modules()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -55,6 +59,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(identity_router)
     app.include_router(catalog_router)
+    app.include_router(inventory_router)
+    app.include_router(orders_router)
     return app
 
 
