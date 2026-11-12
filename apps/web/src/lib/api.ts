@@ -12,6 +12,10 @@ export type Order = Schemas["OrderOut"];
 export type Ticket = Schemas["TicketOut"];
 export type Problem = Schemas["Problem"];
 export type QueueStatus = Schemas["QueueStatus"];
+export type Bracket = Schemas["BracketOut"];
+export type Match = Schemas["MatchOut"];
+export type Manifest = Schemas["Manifest"];
+export type ScanResult = Schemas["ScanOut"];
 
 /** An error response from the API, already parsed. */
 export class ApiError extends Error {

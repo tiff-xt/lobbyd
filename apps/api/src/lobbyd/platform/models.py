@@ -18,6 +18,7 @@ _MODEL_MODULES = (
     "lobbyd.notifications.models",
     "lobbyd.orders.models",
     "lobbyd.teams.models",
+    "lobbyd.brackets.models",
 )
 
 

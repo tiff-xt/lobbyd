@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     db_pool_timeout_seconds: float = 5
 
     jwt_secret: SecretStr = SecretStr(_DEV_JWT_SECRET)
+    # Ed25519 private key that signs ticket QR codes: 32 random bytes, base64url.
+    #   python -c "import secrets; print(secrets.token_urlsafe(32))"
+    # Outside production a key is derived from jwt_secret, so tickets survive restarts.
+    ticket_signing_key: SecretStr | None = None
     access_token_ttl_seconds: int = 15 * 60
     refresh_token_ttl_seconds: int = 30 * 24 * 60 * 60
 
@@ -87,6 +91,10 @@ class Settings(BaseSettings):
                 )
             if self.paysim_webhook_secret.get_secret_value() == _DEV_PAYSIM_SECRET:
                 raise ValueError("LOBBYD_PAYSIM_WEBHOOK_SECRET must be set in production")
+            if self.ticket_signing_key is None:
+                # A key derived from a secret that also signs logins would mean
+                # one leak forges both. Production gets its own.
+                raise ValueError("LOBBYD_TICKET_SIGNING_KEY must be set in production")
         return self
 
 

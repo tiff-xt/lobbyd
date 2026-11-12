@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from lobbyd.brackets.router import router as brackets_router
 from lobbyd.catalog import service as catalog
 from lobbyd.catalog.router import router as catalog_router
 from lobbyd.config import Settings, get_settings
@@ -22,8 +23,11 @@ from lobbyd.platform.errors import (
     install_error_handlers,
     use_problem_media_type,
 )
+from lobbyd.platform.live import Hub
 from lobbyd.platform.logging import RequestContextMiddleware, configure_logging
 from lobbyd.teams.router import router as teams_router
+from lobbyd.tickets import tokens
+from lobbyd.tickets.router import router as checkin_router
 from lobbyd.wiring import wire_modules
 
 
@@ -36,6 +40,7 @@ def create_app(
     cache.enabled = settings.cache_enabled
     catalog.configure_memos(settings.catalog_memo_seconds)
     configure_user_memo(settings.auth_memo_seconds)
+    tokens.configure(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -45,9 +50,12 @@ def create_app(
         app.state.sessionmaker = create_sessionmaker(engine)
         app.state.redis = create_redis(settings)
         app.state.provider = provider or PaysimProvider.connect(settings.paysim_url)
+        app.state.live = Hub(app.state.redis)
+        await app.state.live.start()
         try:
             yield
         finally:
+            await app.state.live.stop()
             await app.state.redis.aclose()
             if provider is None:
                 await app.state.provider.aclose()
@@ -74,6 +82,8 @@ def create_app(
     app.include_router(inventory_router)
     app.include_router(orders_router)
     app.include_router(teams_router)
+    app.include_router(checkin_router)
+    app.include_router(brackets_router)
     return app
 
 

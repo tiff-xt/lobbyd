@@ -165,7 +165,9 @@ If the venue network drops, scanners keep working from a manifest they downloade
 
 ### 5.4 Live brackets
 
-Match results are written to Postgres, then published on Redis pub/sub. Every API instance subscribes and pushes the update to its own WebSocket clients, so viewers connected to different instances all see the same bracket. A client that reconnects fetches the current bracket over HTTP first, then resumes the stream, so a missed message cannot leave it permanently stale.
+A match result and its announcement are written in one transaction (the announcement goes in the outbox). A worker publishes it on Redis pub/sub. Every API instance holds one subscription and pushes each update to its own WebSocket clients, so viewers connected to different instances all see the same bracket.
+
+Pub/sub keeps nothing: a message sent while an instance was disconnected is gone. So the stream never pretends to be complete. On every connection the server subscribes first and then sends the current bracket, each match carries a version so a stale or repeated message is ignored, and a client that falls too far behind, or whose instance lost Redis, is disconnected and starts again from a fresh snapshot.
 
 ## 6. The hard parts
 
@@ -206,11 +208,14 @@ All write endpoints that create something accept `Idempotency-Key`. Lists use cu
 | `DELETE /teams/{id}` | Captain withdraws; the slot goes to the waitlist |
 | `POST /tournaments/{slug}/waitlist` | Join the waitlist when slots are full |
 | `GET /tournaments/{slug}/waitlist/me` | Place in line, or the offered hold |
+| `POST /tournaments/{slug}/bracket` | Organizer draws the bracket from the confirmed teams |
 | `GET /tournaments/{slug}/bracket` | Current bracket |
-| `WS /tournaments/{slug}/live` | Bracket and availability updates |
-| `POST /matches/{id}/result` | Organizer records a result |
-| `GET /checkin/{tournament}/manifest` | Scanner downloads ticket manifest and verification key |
-| `POST /checkin/scans` | Scanner submits one or many scans |
+| `WS /tournaments/{slug}/live` | The bracket now, then each change as it happens |
+| `POST /matches/{id}/result` | Organizer records or corrects a result (carries the version it saw) |
+| `GET /checkin/{slug}/manifest` | Scanner downloads the valid tickets and the public key |
+| `POST /checkin/{slug}/scan` | Scan one ticket online |
+| `POST /checkin/{slug}/scans` | Upload scans made offline |
+| `GET /checkin/{slug}/summary` | How many are in, and duplicate scans to look at |
 
 ## 8. Scaling beyond one machine
 

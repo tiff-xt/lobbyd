@@ -1,5 +1,6 @@
 """Connects modules that cannot import each other directly."""
 
+from lobbyd.brackets import service as brackets
 from lobbyd.catalog import hooks
 from lobbyd.inventory import service as inventory
 from lobbyd.notifications import service as notifications
@@ -23,5 +24,7 @@ def wire_modules() -> None:
     events.subscribe("order.paid", teams.on_order_paid)
     for topic in ("order.cancelled", "order.expired"):
         events.subscribe(topic, teams.on_order_closed)
+    # Bracket changes go out to every API instance, and from there to browsers.
+    events.subscribe(brackets.BRACKET_CHANGED, brackets.announce)
     # A confirmed team that withdraws gives its ticket and its slot back.
     events.subscribe(teams.TEAM_WITHDRAWN, orders.handle_team_withdrawn)

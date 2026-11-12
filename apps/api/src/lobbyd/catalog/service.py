@@ -634,6 +634,44 @@ async def seat_labels(
     return await _seat_labels.get_many(seat_ids, load)
 
 
+@dataclass(frozen=True)
+class Managed:
+    """A tournament, as far as the people running it on the day need to know."""
+
+    tournament_id: uuid.UUID
+    slug: str
+    title: str
+    team_size: int
+    starts_at: datetime
+
+
+async def require_owner(
+    session: AsyncSession, user: User, *, slug: str | None = None, id: uuid.UUID | None = None
+) -> Managed:
+    """The tournament, if `user` runs it (or is an admin). Otherwise 403, or 404 for a draft."""
+    where = Tournament.slug == slug if slug is not None else Tournament.id == id
+    row = (
+        await session.execute(
+            select(
+                Tournament.id,
+                Tournament.slug,
+                Tournament.title,
+                Tournament.team_size,
+                Tournament.starts_at,
+                Tournament.status,
+                Tournament.organizer_id,
+            ).where(where)
+        )
+    ).one_or_none()
+    if row is None:
+        raise _tournament_not_found()
+    if not _is_owner(user, row.organizer_id):
+        if row.status == "draft":
+            raise _tournament_not_found()
+        raise ProblemError(403, "forbidden", "You do not have permission to do this.")
+    return Managed(row.id, row.slug, row.title, row.team_size, row.starts_at)
+
+
 async def tournament_refs(
     session: AsyncSession, tournament_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, TournamentRef]:

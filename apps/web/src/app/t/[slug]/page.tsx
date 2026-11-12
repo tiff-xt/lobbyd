@@ -11,6 +11,7 @@ import { draftProblem, emptyDraft, TeamEntry, type TeamDraft } from "@/component
 import { Notice, Spinner } from "@/components/ui";
 import { api, ApiError, idempotencyKey, type QueueStatus, unwrap } from "@/lib/api";
 import { dateTime, money, plural } from "@/lib/format";
+import { useCanManage } from "@/lib/useCanManage";
 import { useSession } from "@/lib/useSession";
 
 const MAX_QUANTITY = 8;
@@ -20,6 +21,7 @@ export default function TournamentPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { signedIn } = useSession();
+  const canManage = useCanManage(slug);
 
   const tournament = useQuery({
     queryKey: ["tournament", slug],
@@ -189,6 +191,16 @@ export default function TournamentPage() {
           </Fact>
         </dl>
         {t.description && <p className="mt-4 max-w-2xl text-muted">{t.description}</p>}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link href={`/t/${slug}/bracket`} className="btn btn-ghost !py-1.5 text-sm">
+            Live bracket
+          </Link>
+          {canManage && (
+            <Link href={`/t/${slug}/door`} className="btn btn-ghost !py-1.5 text-sm">
+              Run the door
+            </Link>
+          )}
+        </div>
       </header>
 
       {notOpen && (

@@ -4,7 +4,7 @@ Ticketing and registration backend for gaming tournaments and LAN events. FastAP
 
 Teams register for a limited number of competitor slots, spectators pick seats from a venue map, everyone pays, and tickets are scanned at the door. Popular tournaments sell out in seconds, so the interesting part is staying correct and fast when thousands of people want the same seats at once.
 
-> **Status: phases 1 to 6 and the demo client are complete.** Browse, queue for a turn when a sale is oversubscribed, pick seats on a live map, enter a team or join the waitlist when slots are full, pay through a simulated provider that can be told to misbehave, and receive tickets. Load tested, with the [results](docs/benchmarks.md) published, bad numbers included. Next: check-in and live brackets.
+> **Status: phases 1 to 7 and the demo client are complete.** Browse, queue for a turn when a sale is oversubscribed, pick seats on a live map, enter a team or join the waitlist when slots are full, pay through a simulated provider that can be told to misbehave, and receive tickets with signed QR codes. On the day: scan tickets at the door, online or offline, and follow a bracket that updates live. Load tested, with the [results](docs/benchmarks.md) published, bad numbers included. Next: observability and deployment.
 
 ## Why this project exists
 

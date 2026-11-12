@@ -3,13 +3,14 @@
 import uuid
 from dataclasses import dataclass
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lobbyd.catalog import service as catalog
 from lobbyd.catalog.schemas import SeatLabel
 from lobbyd.platform.ids import uuid7
+from lobbyd.tickets import tokens
 from lobbyd.tickets.models import Ticket
 
 
@@ -20,6 +21,7 @@ class TicketOut(BaseModel):
     seat_id: uuid.UUID | None
     seat: SeatLabel | None
     status: str
+    token: str = Field(description="What the ticket's QR code contains. Signed; see /checkin")
 
 
 @dataclass(frozen=True)
@@ -64,14 +66,22 @@ async def for_orders(
     tickets: dict[uuid.UUID, list[TicketOut]] = {order_id: [] for order_id in order_ids}
     rows = (
         await session.execute(
-            select(Ticket.order_id, Ticket.id, Ticket.ticket_type_id, Ticket.seat_id, Ticket.status)
+            select(
+                Ticket.order_id,
+                Ticket.id,
+                Ticket.ticket_type_id,
+                Ticket.seat_id,
+                Ticket.status,
+                Ticket.tournament_id,
+            )
             .where(Ticket.order_id.in_(order_ids))
             .order_by(Ticket.id)
         )
     ).all()
     seats = await catalog.seat_labels(session, [row.seat_id for row in rows if row.seat_id])
     names = await catalog.ticket_type_names(session, [row.ticket_type_id for row in rows])
-    for order_id, ticket_id, ticket_type_id, seat_id, status in rows:
+    sign = tokens.signer().sign
+    for order_id, ticket_id, ticket_type_id, seat_id, status, tournament_id in rows:
         tickets[order_id].append(
             TicketOut(
                 id=ticket_id,
@@ -80,6 +90,7 @@ async def for_orders(
                 seat_id=seat_id,
                 seat=seats.get(seat_id) if seat_id else None,
                 status=status,
+                token=sign(ticket_id, tournament_id),
             )
         )
     return tickets

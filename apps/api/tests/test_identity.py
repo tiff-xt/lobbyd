@@ -290,7 +290,11 @@ async def test_require_role(
 
 
 def test_production_refuses_development_secrets() -> None:
-    real = {"jwt_secret": SecretStr("r" * 48), "paysim_webhook_secret": SecretStr("w" * 48)}
+    real = {
+        "jwt_secret": SecretStr("r" * 48),
+        "paysim_webhook_secret": SecretStr("w" * 48),
+        "ticket_signing_key": SecretStr("a" * 43),
+    }
     Settings(environment="production", **real)  # type: ignore[arg-type]
 
     with pytest.raises(ValidationError):
@@ -299,3 +303,5 @@ def test_production_refuses_development_secrets() -> None:
         Settings(environment="production", **{**real, "jwt_secret": SecretStr("too-short")})  # type: ignore[arg-type]
     with pytest.raises(ValidationError):
         Settings(environment="production", jwt_secret=real["jwt_secret"])  # webhook secret unset
+    with pytest.raises(ValidationError):
+        Settings(environment="production", **{**real, "ticket_signing_key": None})  # type: ignore[arg-type]

@@ -73,3 +73,16 @@ Every error response is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) pr
 | <a id="slots_available"></a>`slots_available` | 409 | The waitlist is only for a full tournament. Register the team directly. |
 | <a id="already_waiting"></a>`already_waiting` | 409 | The caller already has a place on this tournament's waitlist. |
 | <a id="not_on_waitlist"></a>`not_on_waitlist` | 404 | The caller has never joined this tournament's waitlist. |
+| <a id="invalid_ticket_token"></a>`invalid_ticket_token` | 422 | The scanned code is not a ticket signed by this server. |
+| <a id="wrong_tournament"></a>`wrong_tournament` | 409 | A genuine ticket, but for a different tournament. |
+| <a id="ticket_not_found"></a>`ticket_not_found` | 404 | The token is genuine but its ticket no longer exists. |
+| <a id="bracket_not_found"></a>`bracket_not_found` | 404 | The tournament's bracket has not been drawn yet. |
+| <a id="bracket_exists"></a>`bracket_exists` | 409 | The tournament already has a bracket. |
+| <a id="not_enough_teams"></a>`not_enough_teams` | 409 | A bracket needs at least two confirmed teams. |
+| <a id="too_many_teams"></a>`too_many_teams` | 409 | More confirmed teams than a bracket holds (256). |
+| <a id="match_not_found"></a>`match_not_found` | 404 | No such match. |
+| <a id="match_not_ready"></a>`match_not_ready` | 409 | One or both teams are not known yet. |
+| <a id="match_completed"></a>`match_completed` | 409 | The match already has a result, so it cannot be started. |
+| <a id="draw_not_allowed"></a>`draw_not_allowed` | 422 | An elimination match needs a winner. |
+| <a id="stale_version"></a>`stale_version` | 409 | The match changed since the caller read it. Nothing was written. `current_version` is the version now. |
+| <a id="result_locked"></a>`result_locked` | 409 | The next match has been played, so this match's winner cannot change. |

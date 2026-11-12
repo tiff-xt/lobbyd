@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Text, func, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Text, func, text
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,3 +39,40 @@ class Ticket(Base):
     status: Mapped[str] = mapped_column(Text, server_default="valid")
     checked_in_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     issued_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+
+
+class CheckinScan(Base):
+    """One scan of a ticket at the door, whatever came of it."""
+
+    __tablename__ = "checkin_scans"
+    __table_args__ = (
+        CheckConstraint("result IN ('admitted', 'duplicate', 'void')", name="result"),
+        # However scans arrive, online or uploaded later, in whatever order:
+        # at most one scan of a ticket counts as the admission.
+        Index(
+            "checkin_scans_one_admission_idx",
+            "ticket_id",
+            unique=True,
+            postgresql_where=text("result = 'admitted'"),
+        ),
+        Index("checkin_scans_ticket_id_idx", "ticket_id"),
+        Index(
+            "checkin_scans_flagged_idx",
+            "tournament_id",
+            "scanned_at",
+            postgresql_where=text("result = 'duplicate' OR clock_suspect"),
+        ),
+    )
+
+    # Chosen by the scanner for offline scans, so uploading a batch twice
+    # stores it once.
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tickets.id"))
+    tournament_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tournaments.id"))
+    device_id: Mapped[str] = mapped_column(Text)
+    scanned_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))  # the device's clock
+    synced_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+    result: Mapped[str] = mapped_column(Text)
+    offline: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # The device's clock disagreed with ours by more than a scan could explain.
+    clock_suspect: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))

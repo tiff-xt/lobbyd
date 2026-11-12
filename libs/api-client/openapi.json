@@ -33,6 +33,39 @@
         "title": "Availability",
         "type": "object"
       },
+      "BracketOut": {
+        "properties": {
+          "champion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/RoundOut"
+            },
+            "title": "Rounds",
+            "type": "array"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tournament_id",
+          "rounds",
+          "champion"
+        ],
+        "title": "BracketOut",
+        "type": "object"
+      },
       "CountedItemIn": {
         "properties": {
           "quantity": {
@@ -70,6 +103,78 @@
           "message"
         ],
         "title": "FieldError",
+        "type": "object"
+      },
+      "FlaggedScan": {
+        "properties": {
+          "admitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admitted At"
+          },
+          "admitted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The device whose scan counted as the admission",
+            "title": "Admitted By"
+          },
+          "clock_suspect": {
+            "title": "Clock Suspect",
+            "type": "boolean"
+          },
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "offline": {
+            "title": "Offline",
+            "type": "boolean"
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          },
+          "scan_id": {
+            "format": "uuid",
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "scanned_at": {
+            "format": "date-time",
+            "title": "Scanned At",
+            "type": "string"
+          },
+          "ticket_id": {
+            "format": "uuid",
+            "title": "Ticket Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "ticket_id",
+          "result",
+          "device_id",
+          "scanned_at",
+          "offline",
+          "clock_suspect",
+          "admitted_by",
+          "admitted_at"
+        ],
+        "title": "FlaggedScan",
         "type": "object"
       },
       "GameCount": {
@@ -231,6 +336,30 @@
         "title": "HoldOut",
         "type": "object"
       },
+      "KeyOut": {
+        "properties": {
+          "algorithm": {
+            "default": "Ed25519",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "public_key": {
+            "description": "Raw 32-byte public key, base64url",
+            "title": "Public Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key_id",
+          "public_key"
+        ],
+        "title": "KeyOut",
+        "type": "object"
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -250,6 +379,219 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "Manifest": {
+        "description": "Everything a scanner needs to keep working without a network.",
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "keys": {
+            "description": "Public keys that ticket tokens may be signed with",
+            "items": {
+              "$ref": "#/components/schemas/KeyOut"
+            },
+            "title": "Keys",
+            "type": "array"
+          },
+          "tickets": {
+            "description": "Every valid ticket. A ticket that is not listed is refused.",
+            "items": {
+              "$ref": "#/components/schemas/ManifestTicket"
+            },
+            "title": "Tickets",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tournament_id",
+          "title",
+          "generated_at",
+          "keys",
+          "tickets"
+        ],
+        "title": "Manifest",
+        "type": "object"
+      },
+      "ManifestTicket": {
+        "properties": {
+          "checked_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked In At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ticket_type_name": {
+            "title": "Ticket Type Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ticket_type_name",
+          "checked_in_at"
+        ],
+        "title": "ManifestTicket",
+        "type": "object"
+      },
+      "MatchOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "next_match_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Match Id"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "score_a": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score A"
+          },
+          "score_b": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score B"
+          },
+          "status": {
+            "description": "scheduled, live, or completed",
+            "title": "Status",
+            "type": "string"
+          },
+          "team_a": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until the feeding match is decided"
+          },
+          "team_b": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "description": "Send this back when changing the match",
+            "title": "Version",
+            "type": "integer"
+          },
+          "winner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Id"
+          }
+        },
+        "required": [
+          "id",
+          "round",
+          "position",
+          "team_a",
+          "team_b",
+          "score_a",
+          "score_b",
+          "winner_id",
+          "status",
+          "version",
+          "next_match_id"
+        ],
+        "title": "MatchOut",
+        "type": "object"
+      },
+      "OfflineScan": {
+        "properties": {
+          "id": {
+            "description": "Chosen by the scanner. Uploading it again changes nothing",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "scanned_at": {
+            "description": "The device's clock when it scanned",
+            "format": "date-time",
+            "title": "Scanned At",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 400,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "scanned_at"
+        ],
+        "title": "OfflineScan",
         "type": "object"
       },
       "OrderCreate": {
@@ -624,6 +966,34 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "ResultIn": {
+        "properties": {
+          "score_a": {
+            "maximum": 999.0,
+            "minimum": 0.0,
+            "title": "Score A",
+            "type": "integer"
+          },
+          "score_b": {
+            "maximum": 999.0,
+            "minimum": 0.0,
+            "title": "Score B",
+            "type": "integer"
+          },
+          "version": {
+            "description": "The match's version when you looked at it",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "score_a",
+          "score_b",
+          "version"
+        ],
+        "title": "ResultIn",
+        "type": "object"
+      },
       "Roster": {
         "properties": {
           "name": {
@@ -651,6 +1021,32 @@
           "roster"
         ],
         "title": "Roster",
+        "type": "object"
+      },
+      "RoundOut": {
+        "properties": {
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/MatchOut"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "round",
+          "name",
+          "matches"
+        ],
+        "title": "RoundOut",
         "type": "object"
       },
       "RowIn": {
@@ -695,6 +1091,84 @@
           "seats"
         ],
         "title": "RowOut",
+        "type": "object"
+      },
+      "ScanIn": {
+        "properties": {
+          "device_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "token": {
+            "description": "The scanned QR code's contents",
+            "maxLength": 400,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "device_id"
+        ],
+        "title": "ScanIn",
+        "type": "object"
+      },
+      "ScanOut": {
+        "properties": {
+          "checked_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the ticket was first admitted",
+            "title": "Checked In At"
+          },
+          "result": {
+            "description": "admitted, duplicate (already used), or void (cancelled)",
+            "title": "Result",
+            "type": "string"
+          },
+          "scan_id": {
+            "format": "uuid",
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "seat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeatLabel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ticket_id": {
+            "format": "uuid",
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "ticket_type_name": {
+            "title": "Ticket Type Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "result",
+          "ticket_id",
+          "ticket_type_name",
+          "seat",
+          "checked_in_at"
+        ],
+        "title": "ScanOut",
         "type": "object"
       },
       "SeatLabel": {
@@ -866,6 +1340,106 @@
         "title": "SignupRequest",
         "type": "object"
       },
+      "Summary": {
+        "properties": {
+          "checked_in": {
+            "title": "Checked In",
+            "type": "integer"
+          },
+          "duplicates": {
+            "description": "Scans of a ticket that had already been admitted",
+            "title": "Duplicates",
+            "type": "integer"
+          },
+          "flagged": {
+            "description": "Most recent duplicates and doubtful clocks",
+            "items": {
+              "$ref": "#/components/schemas/FlaggedScan"
+            },
+            "title": "Flagged",
+            "type": "array"
+          },
+          "tickets": {
+            "description": "Valid tickets issued",
+            "title": "Tickets",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tickets",
+          "checked_in",
+          "duplicates",
+          "flagged"
+        ],
+        "title": "Summary",
+        "type": "object"
+      },
+      "SyncIn": {
+        "properties": {
+          "device_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "scans": {
+            "items": {
+              "$ref": "#/components/schemas/OfflineScan"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Scans",
+            "type": "array"
+          }
+        },
+        "required": [
+          "device_id",
+          "scans"
+        ],
+        "title": "SyncIn",
+        "type": "object"
+      },
+      "SyncOut": {
+        "properties": {
+          "scans": {
+            "items": {
+              "$ref": "#/components/schemas/SyncedScan"
+            },
+            "title": "Scans",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scans"
+        ],
+        "title": "SyncOut",
+        "type": "object"
+      },
+      "SyncedScan": {
+        "properties": {
+          "clock_suspect": {
+            "default": false,
+            "title": "Clock Suspect",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "result": {
+            "description": "admitted, duplicate, void, or rejected (not a ticket for this event)",
+            "title": "Result",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "result"
+        ],
+        "title": "SyncedScan",
+        "type": "object"
+      },
       "TeamCreate": {
         "description": "Register a team: claims a slot now, confirmed when the entry fee is paid.\n\nSeats and standing tickets can be added to the same basket.",
         "properties": {
@@ -976,6 +1550,25 @@
         "title": "TeamOut",
         "type": "object"
       },
+      "TeamRef": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "TeamRef",
+        "type": "object"
+      },
       "TeamRegistration": {
         "properties": {
           "hold": {
@@ -1034,6 +1627,11 @@
           "ticket_type_name": {
             "title": "Ticket Type Name",
             "type": "string"
+          },
+          "token": {
+            "description": "What the ticket's QR code contains. Signed; see /checkin",
+            "title": "Token",
+            "type": "string"
           }
         },
         "required": [
@@ -1042,7 +1640,8 @@
           "ticket_type_name",
           "seat_id",
           "seat",
-          "status"
+          "status",
+          "token"
         ],
         "title": "TicketOut",
         "type": "object"
@@ -1746,6 +2345,19 @@
         "title": "VenueSummary",
         "type": "object"
       },
+      "VersionIn": {
+        "properties": {
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "VersionIn",
+        "type": "object"
+      },
       "WaitlistOut": {
         "properties": {
           "created_at": {
@@ -2002,6 +2614,217 @@
         ]
       }
     },
+    "/checkin/{slug}/manifest": {
+      "get": {
+        "description": "The public key that ticket tokens are signed with, and every valid ticket with whether it has been used. Download it before doors open and again whenever there is a connection.",
+        "operationId": "get_manifest_checkin__slug__manifest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Manifest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Everything a scanner needs to work offline",
+        "tags": [
+          "check-in"
+        ]
+      }
+    },
+    "/checkin/{slug}/scan": {
+      "post": {
+        "description": "`admitted` exactly once per ticket, however many scanners try at the same moment. After that, `duplicate` with the time it was first used.",
+        "operationId": "scan_ticket_checkin__slug__scan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scan one ticket, online",
+        "tags": [
+          "check-in"
+        ]
+      }
+    },
+    "/checkin/{slug}/scans": {
+      "post": {
+        "description": "Scans are applied in the order they were made. The earliest scan of a ticket is the admission; the rest are recorded as duplicates. Each scan has an id chosen by the scanner, so uploading a batch twice is harmless.",
+        "operationId": "sync_scans_checkin__slug__scans_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload scans made while offline",
+        "tags": [
+          "check-in"
+        ]
+      }
+    },
+    "/checkin/{slug}/summary": {
+      "get": {
+        "operationId": "get_summary_checkin__slug__summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Summary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "How many are in, and which scans need a look",
+        "tags": [
+          "check-in"
+        ]
+      }
+    },
     "/games": {
       "get": {
         "operationId": "list_games_games_get",
@@ -2241,6 +3064,123 @@
         "summary": "A hold and what is in it",
         "tags": [
           "booking"
+        ]
+      }
+    },
+    "/matches/{match_id}/result": {
+      "post": {
+        "description": "Send the `version` you last saw. If the match changed since, the answer is 409 `stale_version` and nothing is written. The winner moves on to the next match.",
+        "operationId": "report_result_matches__match_id__result_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "match_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Record or correct a result",
+        "tags": [
+          "brackets"
+        ]
+      }
+    },
+    "/matches/{match_id}/start": {
+      "post": {
+        "operationId": "start_match_matches__match_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "match_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark a match as being played",
+        "tags": [
+          "brackets"
         ]
       }
     },
@@ -2752,6 +3692,94 @@
         "summary": "What is left: counts per ticket type and the seats already taken",
         "tags": [
           "booking"
+        ]
+      }
+    },
+    "/tournaments/{slug}/bracket": {
+      "get": {
+        "operationId": "get_bracket_tournaments__slug__bracket_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "summary": "The bracket as it stands",
+        "tags": [
+          "brackets"
+        ]
+      },
+      "post": {
+        "description": "Single elimination, seeded in registration order. With a number of teams that is not a power of two, the top seeds get a bye. A tournament has one bracket.",
+        "operationId": "generate_bracket_tournaments__slug__bracket_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Draw the bracket from the confirmed teams",
+        "tags": [
+          "brackets"
         ]
       }
     },

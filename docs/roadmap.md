@@ -11,7 +11,7 @@ Each phase ends with something that runs and is tested. A phase is done when its
 | 4 | Payments and reliability | Done |
 | 5 | Performance under load | Done |
 | 6 | Teams and waitlist | Done |
-| 7 | Check-in and live brackets | Not started |
+| 7 | Check-in and live brackets | Done |
 | 8 | Observability and deployment | Not started |
 | 9 | Demo client | Done (ahead of order; the waiting room and brackets screens follow their phases) |
 
@@ -62,6 +62,8 @@ Team registration as an atomic claim, roster rules, withdrawal, waitlist with of
 Signed ticket tokens, online scanning, manifest download and offline sync ([ADR 0006](adr/0006-check-in-tokens-and-offline-scanning.md)), single-elimination bracket generation, result reporting, WebSocket updates through Redis pub/sub across multiple API instances.
 
 **Done when:** racing scans of one ticket admit once; an offline batch syncs correctly and duplicates are flagged; a result entered on one API instance appears on clients connected to another.
+
+**Outcome:** thirty scanners racing on one ticket admit it once. Offline batches can be uploaded twice, in any order, from several doors at once; the earliest scan ends up as the admission and the rest are listed for the organizer. A test starts a second API instance on a real port and watches a result entered on the first arrive over a WebSocket connected to the second. Not built: availability over the WebSocket (the page still polls it), and double elimination.
 
 ## Phase 8. Observability and deployment
 

@@ -195,6 +195,25 @@ async def list_confirmed(session: AsyncSession, slug: str) -> list[TeamOut]:
     )
 
 
+async def confirmed_entrants(
+    session: AsyncSession, tournament_id: uuid.UUID
+) -> list[tuple[uuid.UUID, str]]:
+    """Confirmed teams as (id, name), in the order they registered."""
+    rows = await session.execute(
+        select(Team.id, Team.name)
+        .where(Team.tournament_id == tournament_id, Team.status == "confirmed")
+        .order_by(Team.id)
+    )
+    return [(row.id, row.name) for row in rows]
+
+
+async def names(session: AsyncSession, team_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not team_ids:
+        return {}
+    rows = await session.execute(select(Team.id, Team.name).where(Team.id.in_(team_ids)))
+    return {row.id: row.name for row in rows}
+
+
 async def list_mine(session: AsyncSession, user_id: uuid.UUID) -> list[TeamOut]:
     return await _teams(
         session, Team.captain_id == user_id, Team.status != "withdrawn", private=True

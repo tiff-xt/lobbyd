@@ -75,6 +75,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/checkin/{slug}/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Everything a scanner needs to work offline
+         * @description The public key that ticket tokens are signed with, and every valid ticket with whether it has been used. Download it before doors open and again whenever there is a connection.
+         */
+        get: operations["get_manifest_checkin__slug__manifest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/checkin/{slug}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan one ticket, online
+         * @description `admitted` exactly once per ticket, however many scanners try at the same moment. After that, `duplicate` with the time it was first used.
+         */
+        post: operations["scan_ticket_checkin__slug__scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/checkin/{slug}/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload scans made while offline
+         * @description Scans are applied in the order they were made. The earliest scan of a ticket is the admission; the rest are recorded as duplicates. Each scan has an id chosen by the scanner, so uploading a batch twice is harmless.
+         */
+        post: operations["sync_scans_checkin__slug__scans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/checkin/{slug}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How many are in, and which scans need a look */
+        get: operations["get_summary_checkin__slug__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/games": {
         parameters: {
             query?: never;
@@ -142,6 +219,43 @@ export interface paths {
         post?: never;
         /** Give a hold back early */
         delete: operations["release_hold_holds__hold_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/matches/{match_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record or correct a result
+         * @description Send the `version` you last saw. If the match changed since, the answer is 409 `stale_version` and nothing is written. The winner moves on to the next match.
+         */
+        post: operations["report_result_matches__match_id__result_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/matches/{match_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a match as being played */
+        post: operations["start_match_matches__match_id__start_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -277,6 +391,27 @@ export interface paths {
         get: operations["get_availability_tournaments__slug__availability_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{slug}/bracket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The bracket as it stands */
+        get: operations["get_bracket_tournaments__slug__bracket_get"];
+        put?: never;
+        /**
+         * Draw the bracket from the confirmed teams
+         * @description Single elimination, seeded in registration order. With a number of teams that is not a power of two, the top seeds get a bye. A tournament has one bracket.
+         */
+        post: operations["generate_bracket_tournaments__slug__bracket_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -574,6 +709,17 @@ export interface components {
              */
             tournament_id: string;
         };
+        /** BracketOut */
+        BracketOut: {
+            champion: components["schemas"]["TeamRef"] | null;
+            /** Rounds */
+            rounds: components["schemas"]["RoundOut"][];
+            /**
+             * Tournament Id
+             * Format: uuid
+             */
+            tournament_id: string;
+        };
         /** CountedItemIn */
         CountedItemIn: {
             /**
@@ -593,6 +739,39 @@ export interface components {
             field: string;
             /** Message */
             message: string;
+        };
+        /** FlaggedScan */
+        FlaggedScan: {
+            /** Admitted At */
+            admitted_at: string | null;
+            /**
+             * Admitted By
+             * @description The device whose scan counted as the admission
+             */
+            admitted_by: string | null;
+            /** Clock Suspect */
+            clock_suspect: boolean;
+            /** Device Id */
+            device_id: string;
+            /** Offline */
+            offline: boolean;
+            /** Result */
+            result: string;
+            /**
+             * Scan Id
+             * Format: uuid
+             */
+            scan_id: string;
+            /**
+             * Scanned At
+             * Format: date-time
+             */
+            scanned_at: string;
+            /**
+             * Ticket Id
+             * Format: uuid
+             */
+            ticket_id: string;
         };
         /** GameCount */
         GameCount: {
@@ -663,6 +842,21 @@ export interface components {
              */
             tournament_id: string;
         };
+        /** KeyOut */
+        KeyOut: {
+            /**
+             * Algorithm
+             * @default Ed25519
+             */
+            algorithm: string;
+            /** Key Id */
+            key_id: string;
+            /**
+             * Public Key
+             * @description Raw 32-byte public key, base64url
+             */
+            public_key: string;
+        };
         /** LoginRequest */
         LoginRequest: {
             /**
@@ -672,6 +866,96 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * Manifest
+         * @description Everything a scanner needs to keep working without a network.
+         */
+        Manifest: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Keys
+             * @description Public keys that ticket tokens may be signed with
+             */
+            keys: components["schemas"]["KeyOut"][];
+            /**
+             * Tickets
+             * @description Every valid ticket. A ticket that is not listed is refused.
+             */
+            tickets: components["schemas"]["ManifestTicket"][];
+            /** Title */
+            title: string;
+            /**
+             * Tournament Id
+             * Format: uuid
+             */
+            tournament_id: string;
+        };
+        /** ManifestTicket */
+        ManifestTicket: {
+            /** Checked In At */
+            checked_in_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ticket Type Name */
+            ticket_type_name: string;
+        };
+        /** MatchOut */
+        MatchOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Next Match Id */
+            next_match_id: string | null;
+            /** Position */
+            position: number;
+            /** Round */
+            round: number;
+            /** Score A */
+            score_a: number | null;
+            /** Score B */
+            score_b: number | null;
+            /**
+             * Status
+             * @description scheduled, live, or completed
+             */
+            status: string;
+            /** @description Null until the feeding match is decided */
+            team_a: components["schemas"]["TeamRef"] | null;
+            team_b: components["schemas"]["TeamRef"] | null;
+            /**
+             * Version
+             * @description Send this back when changing the match
+             */
+            version: number;
+            /** Winner Id */
+            winner_id: string | null;
+        };
+        /** OfflineScan */
+        OfflineScan: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Chosen by the scanner. Uploading it again changes nothing
+             */
+            id: string;
+            /**
+             * Scanned At
+             * Format: date-time
+             * @description The device's clock when it scanned
+             */
+            scanned_at: string;
+            /** Token */
+            token: string;
         };
         /** OrderCreate */
         OrderCreate: {
@@ -816,6 +1100,18 @@ export interface components {
             /** Refresh Token */
             refresh_token: string;
         };
+        /** ResultIn */
+        ResultIn: {
+            /** Score A */
+            score_a: number;
+            /** Score B */
+            score_b: number;
+            /**
+             * Version
+             * @description The match's version when you looked at it
+             */
+            version: number;
+        };
         /** Roster */
         Roster: {
             /** Name */
@@ -825,6 +1121,15 @@ export interface components {
              * @description In-game names, one per player
              */
             roster: string[];
+        };
+        /** RoundOut */
+        RoundOut: {
+            /** Matches */
+            matches: components["schemas"]["MatchOut"][];
+            /** Name */
+            name: string;
+            /** Round */
+            round: number;
         };
         /** RowIn */
         RowIn: {
@@ -842,6 +1147,42 @@ export interface components {
             label: string;
             /** Seats */
             seats: components["schemas"]["SeatOut"][];
+        };
+        /** ScanIn */
+        ScanIn: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Token
+             * @description The scanned QR code's contents
+             */
+            token: string;
+        };
+        /** ScanOut */
+        ScanOut: {
+            /**
+             * Checked In At
+             * @description When the ticket was first admitted
+             */
+            checked_in_at: string | null;
+            /**
+             * Result
+             * @description admitted, duplicate (already used), or void (cancelled)
+             */
+            result: string;
+            /**
+             * Scan Id
+             * Format: uuid
+             */
+            scan_id: string;
+            seat: components["schemas"]["SeatLabel"] | null;
+            /**
+             * Ticket Id
+             * Format: uuid
+             */
+            ticket_id: string;
+            /** Ticket Type Name */
+            ticket_type_name: string;
         };
         /**
          * SeatLabel
@@ -918,6 +1259,56 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** Summary */
+        Summary: {
+            /** Checked In */
+            checked_in: number;
+            /**
+             * Duplicates
+             * @description Scans of a ticket that had already been admitted
+             */
+            duplicates: number;
+            /**
+             * Flagged
+             * @description Most recent duplicates and doubtful clocks
+             */
+            flagged: components["schemas"]["FlaggedScan"][];
+            /**
+             * Tickets
+             * @description Valid tickets issued
+             */
+            tickets: number;
+        };
+        /** SyncIn */
+        SyncIn: {
+            /** Device Id */
+            device_id: string;
+            /** Scans */
+            scans: components["schemas"]["OfflineScan"][];
+        };
+        /** SyncOut */
+        SyncOut: {
+            /** Scans */
+            scans: components["schemas"]["SyncedScan"][];
+        };
+        /** SyncedScan */
+        SyncedScan: {
+            /**
+             * Clock Suspect
+             * @default false
+             */
+            clock_suspect: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Result
+             * @description admitted, duplicate, void, or rejected (not a ticket for this event)
+             */
+            result: string;
+        };
         /**
          * TeamCreate
          * @description Register a team: claims a slot now, confirmed when the entry fee is paid.
@@ -971,6 +1362,16 @@ export interface components {
              */
             tournament_id: string;
         };
+        /** TeamRef */
+        TeamRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** TeamRegistration */
         TeamRegistration: {
             /** @description Check this out to confirm the team */
@@ -996,6 +1397,11 @@ export interface components {
             ticket_type_id: string;
             /** Ticket Type Name */
             ticket_type_name: string;
+            /**
+             * Token
+             * @description What the ticket's QR code contains. Signed; see /checkin
+             */
+            token: string;
         };
         /** TicketTypeAvailability */
         TicketTypeAvailability: {
@@ -1298,6 +1704,11 @@ export interface components {
             /** Timezone */
             timezone: string;
         };
+        /** VersionIn */
+        VersionIn: {
+            /** Version */
+            version: number;
+        };
         /** WaitlistOut */
         WaitlistOut: {
             /**
@@ -1473,6 +1884,138 @@ export interface operations {
             };
         };
     };
+    get_manifest_checkin__slug__manifest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Manifest"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    scan_ticket_checkin__slug__scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanOut"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    sync_scans_checkin__slug__scans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncOut"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_summary_checkin__slug__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Summary"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_games_games_get: {
         parameters: {
             query?: never;
@@ -1619,6 +2162,76 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    report_result_matches__match_id__result_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResultIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchOut"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    start_match_matches__match_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchOut"];
+                };
             };
             /** @description The request is not valid */
             422: {
@@ -1911,6 +2524,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Availability"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_bracket_tournaments__slug__bracket_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BracketOut"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    generate_bracket_tournaments__slug__bracket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BracketOut"];
                 };
             };
             /** @description The request is not valid */

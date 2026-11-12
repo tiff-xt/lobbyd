@@ -116,6 +116,27 @@ STRICT = {
                       OR (t.status = 'pending' AND h.status IN ('active', 'converted')))
               ) > c.capacity
     """,
+    "a ticket is checked in without exactly one admitting scan": """
+        SELECT t.id FROM tickets t
+        WHERE t.checked_in_at IS NOT NULL
+          AND (SELECT count(*) FROM checkin_scans s
+               WHERE s.ticket_id = t.id AND s.result = 'admitted') <> 1
+    """,
+    "a scan admitted a ticket that is not checked in": """
+        SELECT s.id FROM checkin_scans s JOIN tickets t ON t.id = s.ticket_id
+        WHERE s.result = 'admitted' AND t.checked_in_at IS NULL
+    """,
+    "a match winner did not move on to the next match": """
+        SELECT m.id FROM matches m JOIN matches n ON n.id = m.next_match_id
+        WHERE m.winner_id IS NOT NULL
+          AND m.winner_id IS DISTINCT FROM
+              (CASE WHEN m.position % 2 = 0 THEN n.team_a_id ELSE n.team_b_id END)
+    """,
+    "a match is being played by a team that did not win its way there": """
+        SELECT n.id FROM matches n
+        JOIN matches m ON m.next_match_id = n.id AND m.winner_id IS NULL
+        WHERE (CASE WHEN m.position % 2 = 0 THEN n.team_a_id ELSE n.team_b_id END) IS NOT NULL
+    """,
     "a user has more than one active hold for a tournament": """
         SELECT user_id, tournament_id FROM holds WHERE status = 'active'
         GROUP BY user_id, tournament_id HAVING count(*) > 1

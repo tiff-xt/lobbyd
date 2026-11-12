@@ -124,8 +124,11 @@ def key() -> dict[str, str]:
 class Sale:
     """A published tournament with reserved seats, general admission, and team slots."""
 
-    def __init__(self, slug: str, seat_ids: list[str], types: dict[str, str]) -> None:
+    def __init__(
+        self, slug: str, seat_ids: list[str], types: dict[str, str], organizer: dict[str, str]
+    ) -> None:
         self.slug = slug
+        self.organizer = organizer  # Authorization header of whoever runs it
         self.seat_ids = seat_ids  # in section, row, seat order
         self.types = types  # name -> ticket type id
 
@@ -177,7 +180,7 @@ async def open_sale(
     seat_map = (await client.get(f"/venues/{venue['id']}/seats")).json()
     seat_ids = [s["id"] for s in seat_map["sections"][0]["rows"][0]["seats"]]
     types = {t["name"]: t["id"] for t in published_.json()["ticket_types"]}
-    return Sale(slug, seat_ids, types)
+    return Sale(slug, seat_ids, types, headers)
 
 
 async def hold(

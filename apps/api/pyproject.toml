@@ -19,6 +19,7 @@ dependencies = [
     "structlog>=24.4",
     "tzdata>=2024.2",
     "httpx>=0.28",
+    "cryptography>=44",
 ]
 
 [project.scripts]
@@ -49,6 +50,7 @@ layers = [
     "lobbyd.openapi",
     "lobbyd.main | lobbyd.seed | lobbyd.cli | lobbyd.worker",
     "lobbyd.wiring | lobbyd.reconcile",
+    "lobbyd.brackets",
     "lobbyd.orders | lobbyd.teams",
     "lobbyd.inventory",
     "lobbyd.waitingroom | lobbyd.tickets | lobbyd.payments | lobbyd.notifications",
