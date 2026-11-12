@@ -21,7 +21,7 @@ never waits and cannot take part in a deadlock.
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from redis.asyncio import Redis
@@ -34,10 +34,12 @@ from sqlalchemy import (
     literal,
     or_,
     select,
+    text,
     tuple_,
     update,
 )
-from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lobbyd.catalog import service as catalog
@@ -51,7 +53,6 @@ from lobbyd.inventory.schemas import (
     HoldOut,
     TicketTypeAvailability,
 )
-from lobbyd.platform.db import violated_constraint
 from lobbyd.platform.errors import ProblemError
 from lobbyd.platform.ids import uuid7
 from lobbyd.waitingroom import service as waitingroom
@@ -144,18 +145,10 @@ async def availability(session: AsyncSession, slug: str) -> Availability:
 
 
 async def _hold_out(session: AsyncSession, hold: Hold) -> HoldOut:
-    items = (
-        await session.execute(
-            select(
-                HoldItem.ticket_type_id,
-                HoldItem.seat_id,
-                HoldItem.quantity,
-                HoldItem.unit_price_cents,
-            )
-            .where(HoldItem.hold_id == hold.id)
-            .order_by(HoldItem.id)
-        )
-    ).all()
+    return await _hold_view(session, hold, await _items(session, hold.id))
+
+
+async def _hold_view(session: AsyncSession, hold: Hold, items: "list[PurchasedItem]") -> HoldOut:
     seats = await catalog.seat_labels(session, [i.seat_id for i in items if i.seat_id])
     names = await catalog.ticket_type_names(session, [i.ticket_type_id for i in items])
     tournament = (await catalog.tournament_refs(session, [hold.tournament_id]))[hold.tournament_id]
@@ -167,9 +160,12 @@ async def _hold_out(session: AsyncSession, hold: Hold) -> HoldOut:
         expires_at=hold.expires_at,
         items=[
             HoldItemOut(
-                **item._asdict(),
+                ticket_type_id=item.ticket_type_id,
                 ticket_type_name=names[item.ticket_type_id],
+                seat_id=item.seat_id,
                 seat=seats.get(item.seat_id) if item.seat_id else None,
+                quantity=item.quantity,
+                unit_price_cents=item.unit_price_cents,
             )
             for item in items
         ],
@@ -290,12 +286,49 @@ async def create_hold(
     await session.execute(
         insert(HoldItem), [{"id": uuid7(), "hold_id": hold.id, **item} for item in items]
     )
-    return await _hold_out(session, hold)
+    # Built from what was just written, not read back: one query fewer on
+    # the busiest write path.
+    return await _hold_view(
+        session,
+        hold,
+        _in_order([PurchasedItem(**item) for item in items]),  # type: ignore[arg-type]
+    )
 
 
 async def _open_hold(
     session: AsyncSession, settings: Settings, user_id: uuid.UUID, info: SaleInfo, now: datetime
 ) -> Hold:
+    hold = Hold(
+        id=uuid7(),
+        user_id=user_id,
+        tournament_id=info.tournament_id,
+        currency=info.currency,
+        status="active",
+        expires_at=now + timedelta(seconds=settings.hold_ttl_seconds),
+    )
+    # The partial unique index allows one active hold per user per tournament.
+    # Insert and let the index decide: no read first, and no savepoint to
+    # recover from a constraint error. Two requests from one user at the same
+    # moment cannot both get a row back.
+    insert_hold = (
+        pg_insert(Hold)
+        .values(
+            id=hold.id,
+            user_id=user_id,
+            tournament_id=info.tournament_id,
+            currency=info.currency,
+            status="active",
+            expires_at=hold.expires_at,
+        )
+        .on_conflict_do_nothing(
+            index_elements=[Hold.user_id, Hold.tournament_id], index_where=text("status = 'active'")
+        )
+        .returning(Hold.id)
+    )
+    if (await session.execute(insert_hold)).first() is not None:
+        return hold
+
+    # They already have one. If it is still in time, that is the answer.
     existing = (
         await session.execute(
             select(Hold.id, Hold.expires_at)
@@ -310,29 +343,13 @@ async def _open_hold(
     if existing is not None:
         if existing.expires_at > now:
             raise _hold_exists(existing.id)
-        # Their old hold ran out and the sweeper has not got to it. Close it
-        # here so it does not block them from trying again.
+        # It ran out and the sweeper has not got to it. Close it here so it
+        # does not block them from trying again.
         await _lock_counters(session, info.tournament_id)
         await _close_holds(session, [existing.id], "expired")
-
-    hold = Hold(
-        id=uuid7(),
-        user_id=user_id,
-        tournament_id=info.tournament_id,
-        currency=info.currency,
-        status="active",
-        expires_at=now + timedelta(seconds=settings.hold_ttl_seconds),
-    )
-    try:
-        async with session.begin_nested():
-            session.add(hold)
-    except IntegrityError as exc:
-        if violated_constraint(exc) != "holds_one_active_idx":
-            raise
-        # A second request from the same user got there first.
-        raise ProblemError(
-            409, "hold_exists", "You already have a hold for this tournament."
-        ) from exc
+    if (await session.execute(insert_hold)).first() is None:
+        # A second request from the same user got in between.
+        raise ProblemError(409, "hold_exists", "You already have a hold for this tournament.")
     return hold
 
 
@@ -410,18 +427,23 @@ async def _claim_seats(
 
     # The claim itself: still conditional, so it is correct on its own even
     # if the check above were ever removed or bypassed.
+    claim = (
+        update(TournamentSeat)
+        .where(*mine, _SEAT_IS_FREE)
+        .values(status="held", hold_id=hold.id, held_until=hold.expires_at)
+        .returning(TournamentSeat.seat_id)
+    )
+    refused = ProblemError(409, "seats_unavailable", "Some of these seats are no longer available.")
+    if strategy != "claim_only":
+        # The rows are already locked in order, so this cannot deadlock and
+        # needs no savepoint around it.
+        if len((await session.execute(claim)).all()) != len(seat_ids):
+            raise refused
+        return [(row.seat_id, row.ticket_type_id) for row in found]
     try:
         async with session.begin_nested():
-            claimed = await session.execute(
-                update(TournamentSeat)
-                .where(*mine, _SEAT_IS_FREE)
-                .values(status="held", hold_id=hold.id, held_until=hold.expires_at)
-                .returning(TournamentSeat.seat_id)
-            )
-            if len(claimed.all()) != len(seat_ids):
-                raise ProblemError(
-                    409, "seats_unavailable", "Some of these seats are no longer available."
-                )
+            if len((await session.execute(claim)).all()) != len(seat_ids):
+                raise refused
     except DBAPIError as exc:
         # Only reachable with "claim_only": two claims locked overlapping
         # rows in different orders and Postgres cancelled one of them, after
@@ -634,9 +656,18 @@ async def _items(session: AsyncSession, hold_id: uuid.UUID) -> list[PurchasedIte
             HoldItem.ticket_type_id, HoldItem.seat_id, HoldItem.quantity, HoldItem.unit_price_cents
         )
         .where(HoldItem.hold_id == hold_id)
-        .order_by(HoldItem.id)
+        # A stable order that does not depend on when rows were inserted, so a
+        # hold reads the same every time: counted items first, then seats.
+        .order_by(HoldItem.seat_id.is_not(None), HoldItem.ticket_type_id, HoldItem.seat_id)
     )
     return [PurchasedItem(*row) for row in rows]
+
+
+def _in_order(items: "list[PurchasedItem]") -> "list[PurchasedItem]":
+    """The same order as _items, for items that have not been read back."""
+    return sorted(
+        items, key=lambda i: (i.seat_id is not None, str(i.ticket_type_id), str(i.seat_id or ""))
+    )
 
 
 def _our_seats(hold: Hold) -> ColumnElement[bool]:
@@ -752,7 +783,10 @@ async def queue_status(
 ) -> QueueStatus:
     """The caller's place in a tournament's waiting room, joining it if need be."""
     info = await catalog.get_sale_info(session, slug)
-    now = await _now(session)
+    # The application's clock, not the database's: a place in a queue does
+    # not need the precision a seat claim does, and this endpoint is polled
+    # by everyone waiting, so it should not take a database connection at all.
+    now = datetime.now(UTC)
     if info.status not in ("published", "live") or now >= info.ends_at:
         raise ProblemError(409, "sales_closed", "This tournament is no longer on sale.")
     return await waitingroom.join(redis, settings, info, user_id, now)

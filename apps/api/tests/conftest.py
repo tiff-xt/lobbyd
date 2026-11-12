@@ -22,6 +22,11 @@ os.environ["LOBBYD_RATE_LIMIT_ENABLED"] = "false"
 # Most tests change data and read it straight back. The cache is switched on
 # by the tests that are about it.
 os.environ["LOBBYD_CACHE_ENABLED"] = "false"
+os.environ["LOBBYD_CATALOG_MEMO_SECONDS"] = "0"
+os.environ["LOBBYD_AUTH_MEMO_SECONDS"] = "0"
+# Tests fire hundreds of requests at a small pool on purpose. Let them queue
+# for a connection instead of being told the service is busy.
+os.environ["LOBBYD_DB_POOL_TIMEOUT_SECONDS"] = "60"
 
 import httpx
 import pytest

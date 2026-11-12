@@ -254,7 +254,7 @@ async def test_payment_lands_after_the_order_was_given_up_on(
     # Housekeeping closes the hold, then the order that was waiting on it.
     assert await sweep(sessionmaker) == (1, 2)
     async with sessionmaker.begin() as session:
-        assert await orders.expire_stale_orders(session) == 1
+        assert len(await orders.expire_stale_orders(session)) == 1
     order = (await client.get(f"/orders/{placed['id']}", headers=buyer)).json()
     assert order["status"] == "expired"
     assert await available(client, sale.slug) == {"reserved": 40, "general": 20, "competitor": 4}

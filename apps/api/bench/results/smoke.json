@@ -1,0 +1,101 @@
+{
+  "scenario": "smoke",
+  "users": 60,
+  "seconds": 15,
+  "api_workers": 3,
+  "settings": {},
+  "requests": {
+    "GET availability": {
+      "count": 257,
+      "failures": 0,
+      "p50_ms": 3.0,
+      "p95_ms": 73.0,
+      "p99_ms": 240.0,
+      "per_second": 18.4
+    },
+    "GET order": {
+      "count": 293,
+      "failures": 0,
+      "p50_ms": 26.0,
+      "p95_ms": 460.0,
+      "p99_ms": 590.0,
+      "per_second": 21.0
+    },
+    "GET seat map": {
+      "count": 60,
+      "failures": 0,
+      "p50_ms": 25.0,
+      "p95_ms": 56.0,
+      "p99_ms": 75.0,
+      "per_second": 4.3
+    },
+    "GET tournament": {
+      "count": 60,
+      "failures": 0,
+      "p50_ms": 130.0,
+      "p95_ms": 150.0,
+      "p99_ms": 160.0,
+      "per_second": 4.3
+    },
+    "POST holds": {
+      "count": 92,
+      "failures": 0,
+      "p50_ms": 320.0,
+      "p95_ms": 710.0,
+      "p99_ms": 1000.0,
+      "per_second": 6.6
+    },
+    "POST orders": {
+      "count": 60,
+      "failures": 0,
+      "p50_ms": 220.0,
+      "p95_ms": 420.0,
+      "p99_ms": 450.0,
+      "per_second": 4.3
+    },
+    "POST queue": {
+      "count": 60,
+      "failures": 0,
+      "p50_ms": 190.0,
+      "p95_ms": 500.0,
+      "p99_ms": 520.0,
+      "per_second": 4.3
+    },
+    "page open to seats held": {
+      "count": 60,
+      "failures": 0,
+      "p50_ms": 900.0,
+      "p95_ms": 1600.0,
+      "p99_ms": 1800.0,
+      "per_second": 4.3
+    },
+    "page open to tickets": {
+      "count": 60,
+      "failures": 0,
+      "p50_ms": 4000.0,
+      "p95_ms": 4600.0,
+      "p99_ms": 4800.0,
+      "per_second": 4.3
+    },
+    "Aggregated": {
+      "count": 1002,
+      "failures": 0,
+      "p50_ms": 40.0,
+      "p95_ms": 3600.0,
+      "p99_ms": 4500.0,
+      "per_second": 71.7
+    }
+  },
+  "outcomes": {
+    "hold won": 60,
+    "hold refused": 32,
+    "order paid": 60
+  },
+  "seats_sold": 120,
+  "seats_total": 250,
+  "orders_paid": 60,
+  "tickets": 120,
+  "deadlocks": 0,
+  "server_errors_logged": 0,
+  "invariants_broken": {}
+}

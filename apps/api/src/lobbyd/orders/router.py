@@ -8,6 +8,7 @@ from lobbyd.identity.deps import CurrentUser, limit_per_user
 from lobbyd.orders import payment_flow, service
 from lobbyd.orders.schemas import OrderCreate, OrderOut
 from lobbyd.payments.provider import SIGNATURE_HEADER
+from lobbyd.platform.cache import RedisDep, cached, invalidate
 from lobbyd.platform.db import SessionDep
 from lobbyd.platform.deps import SettingsDep
 from lobbyd.platform.idempotency import IdempotencyKeyHeader, run_idempotent
@@ -51,9 +52,26 @@ async def place_order(
     )
 
 
-@router.get("/orders/{order_id}", tags=["booking"], summary="An order and its tickets")
-async def get_order(order_id: uuid.UUID, session: SessionDep, user: CurrentUser) -> OrderOut:
-    return await service.get_order(session, user.id, order_id)
+@router.get(
+    "/orders/{order_id}",
+    response_model=OrderOut,
+    tags=["booking"],
+    summary="An order and its tickets",
+)
+async def get_order(
+    order_id: uuid.UUID, session: SessionDep, redis: RedisDep, user: CurrentUser
+) -> Response:
+    async def load() -> str:
+        return (await service.get_order(session, user.id, order_id)).model_dump_json()
+
+    # After paying, a client asks for its order again and again until the
+    # payment settles: during a sale this is the most frequent signed-in
+    # request there is. The rendered order is cached until it changes (every
+    # path that changes an order drops the entry after committing), so those
+    # polls cost one Redis read each, not five queries. The key includes the
+    # user, so nobody can be served someone else's order.
+    body = await cached(redis, service.cache_key(user.id, order_id), load, fresh_seconds=30)
+    return Response(body, media_type="application/json")
 
 
 @router.get("/users/me/orders", tags=["booking"], summary="My orders, newest first")
@@ -68,12 +86,18 @@ async def list_my_orders(session: SessionDep, user: CurrentUser) -> list[OrderOu
     description="Signed by the provider. Safe to deliver more than once and in any order.",
 )
 async def payment_webhook(
-    request: Request, session: SessionDep, settings: SettingsDep
+    request: Request, redis: RedisDep, settings: SettingsDep
 ) -> dict[str, bool]:
-    await payment_flow.handle_webhook(
-        session,
-        settings,
-        signature=request.headers.get(SIGNATURE_HEADER),
-        body=await request.body(),
-    )
+    # Its own transaction, not the per-request one: the order's cached copy
+    # must be dropped only after the change is committed. Dropping it before
+    # would let a concurrent read put the old order straight back.
+    async with request.app.state.sessionmaker.begin() as session:
+        changed = await payment_flow.handle_webhook(
+            session,
+            settings,
+            signature=request.headers.get(SIGNATURE_HEADER),
+            body=await request.body(),
+        )
+    if changed:
+        await invalidate(redis, changed)
     return {"received": True}

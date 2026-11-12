@@ -10,6 +10,7 @@ import uuid
 from typing import Any
 
 import structlog
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lobbyd.config import Settings
@@ -20,6 +21,7 @@ from lobbyd.payments.provider import (
     PaymentProvider,
     verify_signature,
 )
+from lobbyd.platform.cache import invalidate
 from lobbyd.platform.errors import ProblemError
 
 log = structlog.get_logger()
@@ -35,11 +37,12 @@ _STATUS = {
 
 async def handle_webhook(
     session: AsyncSession, settings: Settings, *, signature: str | None, body: bytes
-) -> None:
+) -> str | None:
     """Verify, deduplicate, apply. All in the request's one transaction.
 
     Raising makes the provider retry later, which is what we want for
     anything we could not process. Returning normally acknowledges it.
+    Returns the cache key of an order that changed, if one did.
     """
     try:
         verify_signature(
@@ -63,13 +66,14 @@ async def handle_webhook(
     # of the same event finds the id and stops here.
     if not await payments.record_event(session, event):
         log.info("webhook_duplicate", provider_event_id=event_id)
-        return
+        return None
     status = _STATUS.get(event_type)
     if status is None:
-        return  # a type we do not act on; acknowledged so it is not resent
+        return None  # a type we do not act on; acknowledged so it is not resent
     change = await payments.apply(session, payment_id, status=status, provider_ref=provider_ref)
-    if change is not None:
-        await orders.on_payment_update(session, change)
+    if change is None:
+        return None
+    return await orders.on_payment_update(session, change)
 
 
 async def poll_unsettled(
@@ -77,6 +81,7 @@ async def poll_unsettled(
     provider: PaymentProvider,
     *,
     older_than_seconds: int = 60,
+    redis: Redis | None = None,
 ) -> int:
     """Ask the provider about payments we have heard nothing about for a while.
 
@@ -97,7 +102,9 @@ async def poll_unsettled(
             change = await payments.apply(
                 session, payment_id, status=current.status, provider_ref=provider_ref
             )
-            if change is not None:
-                await orders.on_payment_update(session, change)
-                moved += 1
+            changed = await orders.on_payment_update(session, change) if change else None
+        if changed:
+            moved += 1
+            if redis is not None:
+                await invalidate(redis, changed)
     return moved

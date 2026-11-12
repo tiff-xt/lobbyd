@@ -158,8 +158,18 @@ async def _complete(session: AsyncSession, order: Order) -> bool:
     return True
 
 
-async def on_payment_update(session: AsyncSession, change: Transition) -> None:
-    """React to a payment changing state. The caller holds the payment's row lock."""
+def cache_key(user_id: uuid.UUID, order_id: uuid.UUID) -> str:
+    """Where an order's rendered JSON is cached. The user is part of the key,
+    so a cached order can only ever be served to its owner."""
+    return f"order:{user_id}:{order_id}"
+
+
+async def on_payment_update(session: AsyncSession, change: Transition) -> str:
+    """React to a payment changing state. The caller holds the payment's row lock.
+
+    Returns the cache key of the order, for the caller to drop once the
+    transaction has committed.
+    """
     order = await _lock(session, change.order_id)
 
     if change.status == "succeeded":
@@ -186,12 +196,14 @@ async def on_payment_update(session: AsyncSession, change: Transition) -> None:
         await outbox.emit(session, "order.refunded", _event(order))
 
     await session.flush()
+    return cache_key(order.user_id, order.id)
 
 
-async def expire_stale_orders(session: AsyncSession, *, limit: int = 200) -> int:
+async def expire_stale_orders(session: AsyncSession, *, limit: int = 200) -> list[str]:
     """Close pending orders whose hold lapsed before payment arrived.
 
     If the payment turns up afterwards, on_payment_update refunds it.
+    Returns the cache keys of the orders it closed.
     """
     pending = list(
         await session.scalars(
@@ -208,7 +220,7 @@ async def expire_stale_orders(session: AsyncSession, *, limit: int = 200) -> int
         order.status = "expired"
         await outbox.emit(session, "order.expired", _event(order))
     await session.flush()
-    return len(expired)
+    return [cache_key(order.user_id, order.id) for order in expired]
 
 
 # --- reading -------------------------------------------------------------------

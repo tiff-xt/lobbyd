@@ -6,8 +6,10 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from lobbyd.catalog import service as catalog
 from lobbyd.catalog.router import router as catalog_router
 from lobbyd.config import Settings, get_settings
+from lobbyd.identity.deps import configure_user_memo
 from lobbyd.identity.router import router as identity_router
 from lobbyd.inventory.router import router as inventory_router
 from lobbyd.orders.router import router as orders_router
@@ -31,6 +33,8 @@ def create_app(
     configure_logging(json=settings.log_json)
     wire_modules()
     cache.enabled = settings.cache_enabled
+    catalog.configure_memos(settings.catalog_memo_seconds)
+    configure_user_memo(settings.auth_memo_seconds)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

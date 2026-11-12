@@ -72,7 +72,12 @@ export default function CheckoutPage() {
     enabled: !!orderId,
     initialData: existing.data ?? undefined,
     // Poll while the payment is in flight, then stop.
-    refetchInterval: (query) => (query.state.data?.status === "pending" ? 700 : false),
+    // Ask again soon at first, then less often: a page that keeps hammering
+    // a busy server is part of what keeps it busy.
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending"
+        ? Math.min(3000, 600 * 1.4 ** query.state.dataUpdateCount)
+        : false,
   });
 
   const release = useMutation({

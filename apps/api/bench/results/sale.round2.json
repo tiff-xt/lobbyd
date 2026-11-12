@@ -1,0 +1,105 @@
+{
+  "scenario": "sale",
+  "users": 1500,
+  "seconds": 75,
+  "api_workers": 3,
+  "settings": {},
+  "requests": {
+    "GET availability": {
+      "count": 17586,
+      "failures": 4,
+      "p50_ms": 160.0,
+      "p95_ms": 1800.0,
+      "p99_ms": 3900.0,
+      "per_second": 219.9
+    },
+    "GET order": {
+      "count": 24510,
+      "failures": 644,
+      "p50_ms": 760.0,
+      "p95_ms": 3700.0,
+      "p99_ms": 5200.0,
+      "per_second": 306.5
+    },
+    "GET seat map": {
+      "count": 1500,
+      "failures": 0,
+      "p50_ms": 190.0,
+      "p95_ms": 2800.0,
+      "p99_ms": 3000.0,
+      "per_second": 18.8
+    },
+    "GET tournament": {
+      "count": 1500,
+      "failures": 0,
+      "p50_ms": 770.0,
+      "p95_ms": 2400.0,
+      "p99_ms": 2900.0,
+      "per_second": 18.8
+    },
+    "POST holds": {
+      "count": 2789,
+      "failures": 801,
+      "p50_ms": 3500.0,
+      "p95_ms": 5700.0,
+      "p99_ms": 7100.0,
+      "per_second": 34.9
+    },
+    "POST orders": {
+      "count": 848,
+      "failures": 240,
+      "p50_ms": 3400.0,
+      "p95_ms": 5300.0,
+      "p99_ms": 6200.0,
+      "per_second": 10.6
+    },
+    "POST queue": {
+      "count": 1500,
+      "failures": 350,
+      "p50_ms": 2100.0,
+      "p95_ms": 6900.0,
+      "p99_ms": 7400.0,
+      "per_second": 18.8
+    },
+    "page open to seats held": {
+      "count": 848,
+      "failures": 0,
+      "p50_ms": 6700.0,
+      "p95_ms": 17000.0,
+      "p99_ms": 21000.0,
+      "per_second": 10.6
+    },
+    "page open to tickets": {
+      "count": 34,
+      "failures": 0,
+      "p50_ms": 63000.0,
+      "p95_ms": 76000.0,
+      "p99_ms": 76000.0,
+      "per_second": 0.4
+    },
+    "Aggregated": {
+      "count": 51115,
+      "failures": 2039,
+      "p50_ms": 400.0,
+      "p95_ms": 5100.0,
+      "p99_ms": 7100.0,
+      "per_second": 639.3
+    }
+  },
+  "outcomes": {
+    "hold won": 848,
+    "hold refused": 1140,
+    "hold error 503": 801,
+    "order error 503": 240,
+    "gave up": 27,
+    "nothing left to pick": 625,
+    "order paid": 34
+  },
+  "seats_sold": 362,
+  "seats_total": 2000,
+  "orders_paid": 181,
+  "tickets": 362,
+  "deadlocks": 0,
+  "server_errors_logged": 0,
+  "invariants_broken": {}
+}

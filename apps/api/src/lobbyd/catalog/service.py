@@ -47,6 +47,7 @@ from lobbyd.identity.models import User
 from lobbyd.platform.db import violated_constraint
 from lobbyd.platform.errors import ProblemError
 from lobbyd.platform.ids import uuid7
+from lobbyd.platform.memo import Memo
 from lobbyd.platform.pagination import Page, decode_cursor, encode_cursor
 
 log = structlog.get_logger()
@@ -498,6 +499,7 @@ async def publish(session: AsyncSession, slug: str, user: User) -> TournamentOut
     )
     # Other modules prepare what they need (inventory puts the seats on sale)
     # in this same transaction.
+    _sale_info.drop(slug)
     await run_publish_hooks(session, await get_sale_info(session, slug))
     log.info("tournament_published", slug=slug)
     return _detail(await _load(session, slug))
@@ -531,7 +533,16 @@ class SaleInfo:
 
 
 async def get_sale_info(session: AsyncSession, slug: str) -> SaleInfo:
-    """Raises tournament_not_found for a missing tournament or a draft."""
+    """Raises tournament_not_found for a missing tournament or a draft.
+
+    Read on every hold attempt, and nearly constant once a tournament is
+    published, so it is remembered for a couple of seconds per process. The
+    worst a stale copy can do is let a hold start in the two seconds after a
+    sale is cancelled or closed.
+    """
+    remembered = _sale_info.get(slug)
+    if remembered is not None:
+        return remembered
     tournament = (
         await session.execute(
             select(
@@ -555,7 +566,7 @@ async def get_sale_info(session: AsyncSession, slug: str) -> SaleInfo:
             TicketType.capacity,
         ).where(TicketType.tournament_id == tournament.id)
     )
-    return SaleInfo(
+    info = SaleInfo(
         tournament_id=tournament.id,
         slug=slug,
         status=tournament.status,
@@ -565,6 +576,8 @@ async def get_sale_info(session: AsyncSession, slug: str) -> SaleInfo:
         waiting_room=tournament.waiting_room,
         ticket_types={row.id: TicketTypeInfo(*row) for row in ticket_types},
     )
+    _sale_info.put(slug, info)
+    return info
 
 
 async def seat_assignments(
@@ -579,42 +592,74 @@ async def seat_assignments(
     return [(seat_id, ticket_type_id) for seat_id, ticket_type_id in rows]
 
 
+# A seat's label and a ticket type's name never change once created, and both
+# are looked up on almost every booking request. Remembering them in the
+# process removes two to four queries from each of those requests.
+_seat_labels: Memo[uuid.UUID, SeatLabel] = Memo(ttl_seconds=None)
+_ticket_type_names: Memo[uuid.UUID, str] = Memo(ttl_seconds=None, max_entries=10_000)
+# These can change (a title is edited, a sale is cancelled), so they are only
+# trusted briefly. Set from settings.catalog_memo_seconds at startup.
+_tournament_refs: Memo[uuid.UUID, TournamentRef] = Memo(ttl_seconds=30)
+_sale_info: Memo[str, "SaleInfo"] = Memo(ttl_seconds=2, max_entries=2_000)
+
+
+def configure_memos(seconds: float) -> None:
+    """How long changeable catalog facts may be remembered. Zero turns it off."""
+    _sale_info.ttl = seconds
+    _tournament_refs.ttl = seconds * 15
+    _sale_info.clear()
+    _tournament_refs.clear()
+
+
 async def seat_labels(
     session: AsyncSession, seat_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, SeatLabel]:
-    if not seat_ids:
-        return {}
-    rows = await session.execute(
-        select(Seat.id, Section.name, Seat.row_label, Seat.number)
-        .join(Section, Section.id == Seat.section_id)
-        .where(Seat.id.in_(seat_ids))
-    )
-    return {
-        seat_id: SeatLabel(section=section, row=row, number=number)
-        for seat_id, section, row, number in rows
-    }
+    async def load(missing: list[uuid.UUID]) -> dict[uuid.UUID, SeatLabel]:
+        rows = await session.execute(
+            select(Seat.id, Section.name, Seat.row_label, Seat.number)
+            .join(Section, Section.id == Seat.section_id)
+            .where(Seat.id.in_(missing))
+        )
+        return {
+            seat_id: SeatLabel(section=section, row=row, number=number)
+            for seat_id, section, row, number in rows
+        }
+
+    return await _seat_labels.get_many(seat_ids, load)
 
 
 async def tournament_refs(
     session: AsyncSession, tournament_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, TournamentRef]:
-    rows = await session.execute(
-        select(
-            Tournament.id, Tournament.slug, Tournament.title, Tournament.starts_at, Venue.timezone
+    async def load(missing: list[uuid.UUID]) -> dict[uuid.UUID, TournamentRef]:
+        rows = await session.execute(
+            select(
+                Tournament.id,
+                Tournament.slug,
+                Tournament.title,
+                Tournament.starts_at,
+                Venue.timezone,
+            )
+            .outerjoin(Venue, Venue.id == Tournament.venue_id)
+            .where(Tournament.id.in_(missing))
         )
-        .outerjoin(Venue, Venue.id == Tournament.venue_id)
-        .where(Tournament.id.in_(tournament_ids))
-    )
-    return {
-        tournament_id: TournamentRef(slug=slug, title=title, starts_at=starts_at, timezone=timezone)
-        for tournament_id, slug, title, starts_at, timezone in rows
-    }
+        return {
+            tournament_id: TournamentRef(
+                slug=slug, title=title, starts_at=starts_at, timezone=timezone
+            )
+            for tournament_id, slug, title, starts_at, timezone in rows
+        }
+
+    return await _tournament_refs.get_many(tournament_ids, load)
 
 
 async def ticket_type_names(
     session: AsyncSession, ticket_type_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, str]:
-    rows = await session.execute(
-        select(TicketType.id, TicketType.name).where(TicketType.id.in_(ticket_type_ids))
-    )
-    return {ticket_type_id: name for ticket_type_id, name in rows}
+    async def load(missing: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+        rows = await session.execute(
+            select(TicketType.id, TicketType.name).where(TicketType.id.in_(missing))
+        )
+        return {ticket_type_id: name for ticket_type_id, name in rows}
+
+    return await _ticket_type_names.get_many(ticket_type_ids, load)

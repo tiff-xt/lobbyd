@@ -27,7 +27,7 @@ from lobbyd.orders import payment_flow
 from lobbyd.orders import service as orders
 from lobbyd.payments.provider import PaysimProvider
 from lobbyd.platform import events, idempotency, outbox
-from lobbyd.platform.cache import create_redis
+from lobbyd.platform.cache import create_redis, invalidate
 from lobbyd.platform.db import create_engine, create_sessionmaker
 from lobbyd.platform.events import EventContext
 from lobbyd.platform.logging import configure_logging
@@ -83,8 +83,10 @@ class _Housekeeping:
     async def __call__(self, ctx: EventContext) -> None:
         expired, freed = await sweep(ctx.sessionmaker)
         async with ctx.sessionmaker.begin() as session:
-            stale = await orders.expire_stale_orders(session)
-        moved = await payment_flow.poll_unsettled(ctx.sessionmaker, ctx.provider)
+            closed = await orders.expire_stale_orders(session)
+        await invalidate(ctx.redis, *closed)
+        stale = len(closed)
+        moved = await payment_flow.poll_unsettled(ctx.sessionmaker, ctx.provider, redis=ctx.redis)
         if expired or freed or stale or moved:
             log.info(
                 "housekeeping",

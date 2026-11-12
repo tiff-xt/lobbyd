@@ -1,5 +1,6 @@
 """Authentication and authorisation dependencies for other modules to use."""
 
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import Annotated
 
@@ -13,9 +14,19 @@ from lobbyd.platform import ratelimit
 from lobbyd.platform.db import SessionDep
 from lobbyd.platform.deps import SettingsDep
 from lobbyd.platform.errors import ProblemError
+from lobbyd.platform.memo import Memo
 from lobbyd.platform.ratelimit import Limit
 
 _bearer = HTTPBearer(auto_error=False)
+
+_users: Memo[uuid.UUID, User] = Memo(ttl_seconds=5, max_entries=100_000)
+
+
+def configure_user_memo(seconds: float) -> None:
+    """How long a signed-in user may be remembered between lookups. Zero turns it off."""
+    _users.ttl = seconds
+    _users.clear()
+
 
 _CHALLENGE = {"WWW-Authenticate": "Bearer"}
 
@@ -34,9 +45,17 @@ async def get_current_user(
             401, "invalid_token", "The access token is invalid or has expired.", headers=_CHALLENGE
         ) from exc
 
-    # Load the user so a deleted account or a changed role takes effect
-    # immediately, not when the token expires.
-    user = await service.get_user(session, claims.user_id)
+    # The token alone is not trusted for who the user is now: the account
+    # may have been deleted or its role changed since it was issued. So the
+    # user is looked up, and remembered per process for a few seconds, because
+    # this runs on every signed-in request. A change therefore takes effect
+    # within those seconds, not at the token's expiry fifteen minutes later.
+    user = _users.get(claims.user_id)
+    if user is None:
+        user = await service.get_user(session, claims.user_id)
+        if user is not None:
+            session.expunge(user)  # a plain value now, safe to share between requests
+            _users.put(claims.user_id, user)
     if user is None:
         raise ProblemError(
             401, "invalid_token", "The access token is invalid or has expired.", headers=_CHALLENGE

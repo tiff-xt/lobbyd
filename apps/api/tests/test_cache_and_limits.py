@@ -305,3 +305,70 @@ async def test_without_redis_requests_are_let_through(
     finally:
         app.state.redis = real
     assert statuses == [401] * 15
+
+
+# --- remembering the signed-in user -------------------------------------------
+
+
+async def test_a_remembered_user_saves_the_lookup_and_expires(
+    client: AsyncClient, sessionmaker: Sessions, settings: Settings
+) -> None:
+    from sqlalchemy import update
+
+    from lobbyd.identity.deps import configure_user_memo
+    from lobbyd.identity.models import User
+
+    (buyer,) = await make_buyers(sessionmaker, settings, 1)
+    configure_user_memo(0.2)
+    try:
+        assert (await client.get("/users/me", headers=buyer)).json()["display_name"] == "Buyer"
+        async with sessionmaker.begin() as session:
+            await session.execute(update(User).values(display_name="Renamed"))
+        # Within the window the remembered copy is used...
+        assert (await client.get("/users/me", headers=buyer)).json()["display_name"] == "Buyer"
+        await asyncio.sleep(0.25)
+        # ...and after it, the change is seen. Deletions and role changes follow the same rule.
+        assert (await client.get("/users/me", headers=buyer)).json()["display_name"] == "Renamed"
+    finally:
+        configure_user_memo(0)
+
+
+async def test_a_cached_order_is_never_served_to_someone_else(
+    client: AsyncClient, sessionmaker: Sessions, settings: Settings
+) -> None:
+    sale = await open_sale(client, sessionmaker)
+    owner, stranger = await make_buyers(sessionmaker, settings, 2)
+    held = (await hold(client, owner, sale, seats=sale.seat_ids[:1])).json()
+    order = (
+        await client.post("/orders", json={"hold_id": held["id"]}, headers={**owner, **key()})
+    ).json()
+
+    path = f"/orders/{order['id']}"
+    assert (await client.get(path, headers=owner)).status_code == 200  # now cached
+    assert (await client.get(path, headers=owner)).status_code == 200
+    assert (await client.get(path, headers=stranger)).status_code == 404
+
+
+async def test_a_cached_order_updates_the_moment_payment_lands(
+    client: AsyncClient, app: FastAPI, sessionmaker: Sessions, settings: Settings
+) -> None:
+    from tests.helpers import settle
+
+    sale = await open_sale(client, sessionmaker)
+    (buyer,) = await make_buyers(sessionmaker, settings, 1)
+    held = (await hold(client, buyer, sale, seats=sale.seat_ids[:2])).json()
+    order = (
+        await client.post("/orders", json={"hold_id": held["id"]}, headers={**buyer, **key()})
+    ).json()
+    path = f"/orders/{order['id']}"
+
+    before = cache.stats.rebuilds
+    for _ in range(5):  # a client polling while it waits
+        assert (await client.get(path, headers=buyer)).json()["status"] == "pending"
+    assert cache.stats.rebuilds - before == 1  # five polls, one database read
+
+    await settle(app)  # the payment succeeds
+    # Not up to thirty seconds later: the change dropped the cached copy.
+    paid = (await client.get(path, headers=buyer)).json()
+    assert paid["status"] == "paid"
+    assert len(paid["tickets"]) == 2

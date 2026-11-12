@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Pool sizing is revisited with measurements in the performance phase.
     db_pool_size: int = 10
     db_max_overflow: int = 10
+    # How long a request waits for a free connection before giving up with a
+    # 503. Short, so an overloaded server sheds load instead of queueing it.
+    db_pool_timeout_seconds: float = 5
 
     jwt_secret: SecretStr = SecretStr(_DEV_JWT_SECRET)
     access_token_ttl_seconds: int = 15 * 60
@@ -57,6 +60,12 @@ class Settings(BaseSettings):
     )
     # Off only for benchmarking what the cache is worth.
     cache_enabled: bool = True
+
+    # How long each API process may remember a tournament's sale window.
+    catalog_memo_seconds: float = 2
+    # How long each API process may go without re-checking that a signed-in
+    # user still exists and what their role is.
+    auth_memo_seconds: float = 5
 
     rate_limit_enabled: bool = True
     # Set only when every request arrives through a proxy we run ourselves.

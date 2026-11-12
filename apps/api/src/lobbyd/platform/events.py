@@ -7,6 +7,7 @@ to a dead-letter stream after a fixed number of attempts, so one poison
 message cannot block the rest or retry forever.
 """
 
+import asyncio
 import json
 import uuid
 from collections.abc import Awaitable, Callable
@@ -26,6 +27,7 @@ log = structlog.get_logger()
 GROUP = "workers"
 DEAD_LETTER_STREAM = "lobbyd:events:dead"
 _ATTEMPTS = "lobbyd:events:attempts"
+_CONCURRENCY = 16
 
 
 @dataclass
@@ -76,14 +78,22 @@ async def consume_once(ctx: EventContext, *, count: int = 50, block_ms: int | No
     messages: list[tuple[str, dict[str, str]]] = list(claimed[1])
     messages += [message for _, batch in fresh for message in batch]
 
-    handled = 0
-    for message_id, fields in messages:
+    async def one(message_id: str, fields: dict[str, str]) -> bool:
         if not fields:  # the entry was trimmed from the stream
             await ctx.redis.xack(STREAM, GROUP, message_id)
-            continue
-        if await _handle(ctx, message_id, fields):
-            handled += 1
-    return handled
+            return False
+        return await _handle(ctx, message_id, fields)
+
+    # Handlers mostly wait on the network (the payment provider, the
+    # database), so a batch is worked on together, not one event at a time.
+    # Handlers are idempotent and events for different orders are independent.
+    gate = asyncio.Semaphore(_CONCURRENCY)
+
+    async def limited(message: tuple[str, dict[str, str]]) -> bool:
+        async with gate:
+            return await one(*message)
+
+    return sum(await asyncio.gather(*(limited(message) for message in messages)))
 
 
 async def _handle(ctx: EventContext, message_id: str, fields: dict[str, str]) -> bool:

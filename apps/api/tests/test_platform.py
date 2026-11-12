@@ -98,3 +98,58 @@ async def test_api_docs_describe_the_real_error_format(client: AsyncClient) -> N
     signup = schema["paths"]["/auth/signup"]["post"]["responses"]["422"]
     assert signup["content"]["application/problem+json"]["schema"]["$ref"].endswith("/Problem")
     assert "HTTPValidationError" not in schema["components"]["schemas"]
+
+
+async def test_an_exhausted_connection_pool_is_a_503_not_a_500(app: FastAPI) -> None:
+    from sqlalchemy.exc import TimeoutError as PoolTimeout
+
+    @app.get("/_busy")
+    async def busy() -> None:
+        raise PoolTimeout("QueuePool limit reached")
+
+    try:
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/_busy")
+    finally:
+        app.router.routes.pop()
+    assert response.status_code == 503
+    assert response.json()["code"] == "overloaded"
+    assert response.headers["retry-after"] == "2"
+
+
+def test_memo_remembers_expires_and_evicts() -> None:
+    from lobbyd.platform.memo import Memo
+
+    forever: Memo[str, int] = Memo(ttl_seconds=None, max_entries=2)
+    forever.put("a", 1)
+    forever.put("b", 2)
+    assert forever.get("a") == 1  # "a" is now the most recently used
+    forever.put("c", 3)  # so "b" is the one evicted
+    assert (forever.get("a"), forever.get("b"), forever.get("c")) == (1, None, 3)
+
+    brief: Memo[str, int] = Memo(ttl_seconds=0.02)
+    brief.put("k", 1)
+    assert brief.get("k") == 1
+    time.sleep(0.03)
+    assert brief.get("k") is None
+
+    off: Memo[str, int] = Memo(ttl_seconds=0)
+    off.put("k", 1)
+    assert off.get("k") is None
+
+
+async def test_memo_only_loads_what_it_does_not_know() -> None:
+    from lobbyd.platform.memo import Memo
+
+    memo: Memo[int, str] = Memo(ttl_seconds=None)
+    asked: list[list[int]] = []
+
+    async def load(keys: list[int]) -> dict[int, str]:
+        asked.append(keys)
+        return {key: str(key) for key in keys}
+
+    assert await memo.get_many([1, 2, 2], load) == {1: "1", 2: "2"}
+    assert await memo.get_many([2, 3], load) == {2: "2", 3: "3"}
+    assert await memo.get_many([1, 2, 3], load) == {1: "1", 2: "2", 3: "3"}
+    assert asked == [[1, 2], [3]]  # duplicates collapsed, known keys not asked for again

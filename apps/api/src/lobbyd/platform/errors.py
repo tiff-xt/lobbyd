@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import TimeoutError as PoolTimeout
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 log = structlog.get_logger()
@@ -120,6 +121,20 @@ def install_error_handlers(app: FastAPI) -> None:
         code = HTTPStatus(exc.status_code).phrase.lower().replace(" ", "_")
         headers = dict(exc.headers) if exc.headers else None
         return _problem(request, exc.status_code, code, str(exc.detail), headers)
+
+    @app.exception_handler(PoolTimeout)
+    async def _overloaded(request: Request, exc: PoolTimeout) -> JSONResponse:
+        # Every database connection is busy and stayed busy. Say so quickly
+        # and ask the client to back off, instead of holding it for a long
+        # wait that ends in an error anyway.
+        log.warning("database_pool_exhausted")
+        return _problem(
+            request,
+            503,
+            "overloaded",
+            "The service is busy. Try again in a moment.",
+            {"Retry-After": "2"},
+        )
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:

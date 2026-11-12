@@ -1,0 +1,4 @@
+bench/.state.json
+bench/results/*.log
+bench/results/*.csv
+bench/results/*.outcomes.json

@@ -58,3 +58,6 @@ Every error response is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) pr
 | <a id="sales_closed"></a>`sales_closed` | 409 | The tournament has ended or is cancelled. |
 | <a id="invalid_signature"></a>`invalid_signature` | 400 | A webhook's signature is missing, wrong, or too old. |
 | <a id="invalid_webhook"></a>`invalid_webhook` | 400 | A correctly signed webhook whose body could not be understood. |
+| <a id="rate_limited"></a>`rate_limited` | 429 | Too many requests. `Retry-After` (and `retry_after` in the body) says how many seconds to wait. |
+| <a id="admission_required"></a>`admission_required` | 403 | The sale has a waiting room and the request carried no valid turn. Join the queue; send the token it gives you as `X-Admission-Token`. |
+| <a id="overloaded"></a>`overloaded` | 503 | Every database connection stayed busy for several seconds. Nothing was changed; retry after `Retry-After` seconds. Booking requests are safe to retry with the same idempotency key. |
