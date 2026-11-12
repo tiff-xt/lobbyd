@@ -15,6 +15,8 @@ the user's message
   -> answer           checked, then shown
 ```
 
+In the web client the assistant is a button in the bottom right corner of every page, opening a chat panel that keeps its conversation as the user moves around the site (and a full page at `/assistant`).
+
 Each step is streamed to the browser as it happens (server-sent events), so the user sees "Looked at your orders" before the answer arrives. Every message, tool request, tool result and decision is stored in order, with timings and token counts. `GET /assistant/conversations/{id}` returns the full record.
 
 ## What keeps it safe

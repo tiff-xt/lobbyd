@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { AssistantWidget } from "@/components/AssistantWidget";
 import { Header } from "@/components/Header";
 import { PointerLight } from "@/components/PointerLight";
 // Fonts ship with the app (open-licensed files from npm), so the build needs
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <PointerLight />
           <Header />
           <main className="relative z-[2] mx-auto w-full max-w-6xl px-4 pb-24 pt-8 sm:px-6">{children}</main>
+          <AssistantWidget />
         </Providers>
       </body>
     </html>

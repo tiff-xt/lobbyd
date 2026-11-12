@@ -64,6 +64,8 @@ How to work:
 - If a tool returns ok: false, explain its detail in plain words. Do not repeat the call.
 - If something is outside what your tools can do, say so plainly.
 - Be brief and concrete. No preamble. Plain text, no markdown tables.
+- Refer to things by name (the tournament, the team, the seat). Ids are for your tool calls;
+  never show one to the user.
 
 Common reasons the site refuses something, by code:
 sold_out: none left. seat_taken: someone else got that seat first. hold_exists: the user
