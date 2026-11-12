@@ -9,6 +9,9 @@ type Seat = { x: number; y: number; size: number; state: State };
 const FILL: Record<State, string> = { free: "#34d399", taken: "#3a362f", gold: "#ffd166" };
 const WIDTH = 600;
 const HEIGHT = 340;
+// Empty space above the stage, so its glow has room to fade out inside the
+// drawing instead of being cut off at the top edge.
+const HEADROOM = 70;
 
 function buildSeats(): Seat[] {
   const random = sequence(7);
@@ -77,7 +80,7 @@ export function ArenaHero({ className = "" }: { className?: string }) {
       const box = root.getBoundingClientRect();
       return {
         x: ((event.clientX - box.left) / box.width) * WIDTH,
-        y: ((event.clientY - box.top) / box.height) * HEIGHT,
+        y: ((event.clientY - box.top) / box.height) * (HEIGHT + HEADROOM) - HEADROOM,
       };
     };
     const onMove = (event: PointerEvent) => Object.assign(pointer, toArena(event), { active: true });
@@ -174,15 +177,17 @@ export function ArenaHero({ className = "" }: { className?: string }) {
   return (
     <svg
       ref={svg}
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+      viewBox={`0 ${-HEADROOM} ${WIDTH} ${HEIGHT + HEADROOM}`}
       className={`${className} cursor-crosshair touch-none select-none will-change-transform`}
       aria-hidden
     >
       <defs>
-        <radialGradient id="arena-wash" cx="0.5" cy="0" r="0.85">
-          <stop offset="0" stopColor="#ffd166" stopOpacity="0.42" />
-          <stop offset="0.45" stopColor="#ff9f1c" stopOpacity="0.1" />
-          <stop offset="1" stopColor="#ff9f1c" stopOpacity="0" />
+        {/* The stage's glow. Centred on the stage and gone well before the
+            ellipse's own edge, so it fades to nothing in every direction. */}
+        <radialGradient id="arena-wash" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stopColor="#ffd166" stopOpacity="0.3" />
+          <stop offset="0.4" stopColor="#ff9f1c" stopOpacity="0.1" />
+          <stop offset="0.85" stopColor="#ff9f1c" stopOpacity="0" />
         </radialGradient>
         <filter id="arena-glow" x="-100%" y="-100%" width="300%" height="300%">
           <feGaussianBlur stdDeviation="3" result="b" />
@@ -193,7 +198,7 @@ export function ArenaHero({ className = "" }: { className?: string }) {
         </filter>
       </defs>
 
-      <ellipse cx="300" cy="20" rx="330" ry="330" fill="url(#arena-wash)" />
+      <ellipse cx="300" cy="40" rx="330" ry="125" fill="url(#arena-wash)" />
 
       {seats.map((seat, i) => (
         <rect
