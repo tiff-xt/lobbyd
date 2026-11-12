@@ -4,14 +4,16 @@ from collections.abc import Awaitable, Callable
 from typing import Annotated
 
 import structlog
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from lobbyd.identity import security, service
 from lobbyd.identity.models import User
+from lobbyd.platform import ratelimit
 from lobbyd.platform.db import SessionDep
 from lobbyd.platform.deps import SettingsDep
 from lobbyd.platform.errors import ProblemError
+from lobbyd.platform.ratelimit import Limit
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -67,5 +69,14 @@ def require_role(*roles: str) -> Callable[[User], Awaitable[User]]:
         if user.role != "admin" and user.role not in roles:
             raise ProblemError(403, "forbidden", "You do not have permission to do this.")
         return user
+
+    return dependency
+
+
+def limit_per_user(limit: Limit) -> Callable[[Request, User], Awaitable[None]]:
+    """Dependency: one rate-limit bucket per signed-in user."""
+
+    async def dependency(request: Request, user: CurrentUser) -> None:
+        await ratelimit.take(request, limit, str(user.id))
 
     return dependency

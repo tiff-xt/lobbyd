@@ -250,7 +250,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** What is left: counts per ticket type and the seats already taken */
+        /**
+         * What is left: counts per ticket type and the seats already taken
+         * @description Up to a few seconds old. That is safe: a claim is always checked against the database, so out-of-date availability can cause a refused hold, never a wrong sale.
+         */
         get: operations["get_availability_tournaments__slug__availability_get"];
         put?: never;
         post?: never;
@@ -271,6 +274,26 @@ export interface paths {
         put?: never;
         /** Make a draft visible and bookable */
         post: operations["publish_tournament_tournaments__slug__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{slug}/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join the waiting room, or check your place in it
+         * @description Call again every second or two. `lobby` means sales have not opened; everyone there is placed in random order when they do. `queued` gives your position. `admitted` carries the token to send with your hold. Tournaments without a waiting room answer `not_required`.
+         */
+        post: operations["join_queue_tournaments__slug__queue_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -405,7 +428,7 @@ export interface paths {
         };
         /**
          * Every seat, grouped by section and row
-         * @description The layout only. It never changes, so it can be cached for a long time.
+         * @description The layout only. It never changes, so it is cached for a long time.
          */
         get: operations["get_seat_map_venues__venue_id__seats_get"];
         put?: never;
@@ -663,6 +686,35 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** QueueStatus */
+        QueueStatus: {
+            /**
+             * Admission Token
+             * @description Send as X-Admission-Token when holding
+             */
+            admission_token?: string | null;
+            /** Estimated Wait Seconds */
+            estimated_wait_seconds?: number | null;
+            /**
+             * Opens At
+             * @description When the lobby is drawn
+             */
+            opens_at?: string | null;
+            /**
+             * Position
+             * @description 1 means you are next
+             */
+            position?: number | null;
+            /** Queue Length */
+            queue_length?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_required" | "lobby" | "queued" | "admitted";
+            /** Token Expires At */
+            token_expires_at?: string | null;
+        };
         /** RefreshRequest */
         RefreshRequest: {
             /** Refresh Token */
@@ -887,6 +939,12 @@ export interface components {
              * @description Omit for online-only events
              */
             venue_id?: string | null;
+            /**
+             * Waiting Room
+             * @description Make buyers queue for a turn. For oversubscribed sales.
+             * @default false
+             */
+            waiting_room: boolean;
         };
         /** TournamentOut */
         TournamentOut: {
@@ -927,6 +985,8 @@ export interface components {
             /** Title */
             title: string;
             venue: components["schemas"]["VenueSummary"] | null;
+            /** Waiting Room */
+            waiting_room: boolean;
         };
         /** TournamentRef */
         TournamentRef: {
@@ -980,6 +1040,8 @@ export interface components {
             /** Title */
             title: string;
             venue: components["schemas"]["VenueSummary"] | null;
+            /** Waiting Room */
+            waiting_room: boolean;
         };
         /**
          * TournamentUpdate
@@ -1000,6 +1062,8 @@ export interface components {
             team_size?: number | null;
             /** Title */
             title?: string | null;
+            /** Waiting Room */
+            waiting_room?: boolean | null;
         };
         /** UserOut */
         UserOut: {
@@ -1272,6 +1336,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Required for tournaments with a waiting room. From the queue endpoint. */
+                "X-Admission-Token"?: string | null;
                 /** @description A random value (a UUID is ideal) generated once per intended action and sent again unchanged on every retry of it. */
                 "Idempotency-Key"?: string | null;
             };
@@ -1646,6 +1712,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TournamentOut"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    join_queue_tournaments__slug__queue_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueStatus"];
                 };
             };
             /** @description The request is not valid */

@@ -519,6 +519,96 @@
         "title": "Problem",
         "type": "object"
       },
+      "QueueStatus": {
+        "properties": {
+          "admission_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Send as X-Admission-Token when holding",
+            "title": "Admission Token"
+          },
+          "estimated_wait_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Wait Seconds"
+          },
+          "opens_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the lobby is drawn",
+            "title": "Opens At"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 means you are next",
+            "title": "Position"
+          },
+          "queue_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Length"
+          },
+          "status": {
+            "enum": [
+              "not_required",
+              "lobby",
+              "queued",
+              "admitted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "token_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Expires At"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "QueueStatus",
+        "type": "object"
+      },
       "RefreshRequest": {
         "properties": {
           "refresh_token": {
@@ -1024,6 +1114,12 @@
             ],
             "description": "Omit for online-only events",
             "title": "Venue Id"
+          },
+          "waiting_room": {
+            "default": false,
+            "description": "Make buyers queue for a turn. For oversubscribed sales.",
+            "title": "Waiting Room",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1104,6 +1200,10 @@
                 "type": "null"
               }
             ]
+          },
+          "waiting_room": {
+            "title": "Waiting Room",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1117,6 +1217,7 @@
           "starts_at",
           "ends_at",
           "sales_open_at",
+          "waiting_room",
           "venue",
           "description",
           "ticket_types"
@@ -1216,6 +1317,10 @@
                 "type": "null"
               }
             ]
+          },
+          "waiting_room": {
+            "title": "Waiting Room",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1229,6 +1334,7 @@
           "starts_at",
           "ends_at",
           "sales_open_at",
+          "waiting_room",
           "venue"
         ],
         "title": "TournamentSummary",
@@ -1323,6 +1429,17 @@
               }
             ],
             "title": "Title"
+          },
+          "waiting_room": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting Room"
           }
         },
         "title": "TournamentUpdate",
@@ -1721,6 +1838,24 @@
         "description": "All or nothing: if any seat is taken or any ticket type is short, nothing is held. One open hold per user per tournament. Retry safely with the same Idempotency-Key.",
         "operationId": "create_hold_holds_post",
         "parameters": [
+          {
+            "description": "Required for tournaments with a waiting room. From the queue endpoint.",
+            "in": "header",
+            "name": "X-Admission-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required for tournaments with a waiting room. From the queue endpoint.",
+              "title": "X-Admission-Token"
+            }
+          },
           {
             "description": "A random value (a UUID is ideal) generated once per intended action and sent again unchanged on every retry of it.",
             "in": "header",
@@ -2298,6 +2433,7 @@
     },
     "/tournaments/{slug}/availability": {
       "get": {
+        "description": "Up to a few seconds old. That is safe: a claim is always checked against the database, so out-of-date availability can cause a refused hold, never a wrong sale.",
         "operationId": "get_availability_tournaments__slug__availability_get",
         "parameters": [
           {
@@ -2382,6 +2518,54 @@
         "summary": "Make a draft visible and bookable",
         "tags": [
           "tournaments"
+        ]
+      }
+    },
+    "/tournaments/{slug}/queue": {
+      "post": {
+        "description": "Call again every second or two. `lobby` means sales have not opened; everyone there is placed in random order when they do. `queued` gives your position. `admitted` carries the token to send with your hold. Tournaments without a waiting room answer `not_required`.",
+        "operationId": "join_queue_tournaments__slug__queue_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Join the waiting room, or check your place in it",
+        "tags": [
+          "booking"
         ]
       }
     },
@@ -2699,7 +2883,7 @@
     },
     "/venues/{venue_id}/seats": {
       "get": {
-        "description": "The layout only. It never changes, so it can be cached for a long time.",
+        "description": "The layout only. It never changes, so it is cached for a long time.",
         "operationId": "get_seat_map_venues__venue_id__seats_get",
         "parameters": [
           {

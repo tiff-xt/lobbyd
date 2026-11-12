@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Computed,
     ForeignKey,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
     text,
 )
@@ -113,6 +115,9 @@ class Tournament(Base):
     ends_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
     sales_open_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
     status: Mapped[str] = mapped_column(Text, server_default="draft")
+    # Buyers must queue for a turn before they can book. For sales expected
+    # to be heavily oversubscribed.
+    waiting_room: Mapped[bool] = mapped_column(Boolean, server_default=false())
     # Maintained by Postgres. Title and game outrank the description.
     search: Mapped[str] = mapped_column(
         TSVECTOR,

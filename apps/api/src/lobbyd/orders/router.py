@@ -2,15 +2,16 @@
 
 import uuid
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
-from lobbyd.identity.deps import CurrentUser
+from lobbyd.identity.deps import CurrentUser, limit_per_user
 from lobbyd.orders import payment_flow, service
 from lobbyd.orders.schemas import OrderCreate, OrderOut
 from lobbyd.payments.provider import SIGNATURE_HEADER
 from lobbyd.platform.db import SessionDep
 from lobbyd.platform.deps import SettingsDep
 from lobbyd.platform.idempotency import IdempotencyKeyHeader, run_idempotent
+from lobbyd.platform.ratelimit import BOOKING
 
 router = APIRouter()
 
@@ -19,6 +20,7 @@ router = APIRouter()
     "/orders",
     status_code=status.HTTP_201_CREATED,
     response_model=OrderOut,
+    dependencies=[Depends(limit_per_user(BOOKING))],
     tags=["booking"],
     summary="Check out a hold",
     description=(

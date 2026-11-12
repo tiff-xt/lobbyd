@@ -11,6 +11,7 @@ export type Hold = Schemas["HoldOut"];
 export type Order = Schemas["OrderOut"];
 export type Ticket = Schemas["TicketOut"];
 export type Problem = Schemas["Problem"];
+export type QueueStatus = Schemas["QueueStatus"];
 
 /** An error response from the API, already parsed. */
 export class ApiError extends Error {

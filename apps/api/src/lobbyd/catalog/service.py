@@ -180,6 +180,7 @@ def _summary_fields(tournament: Tournament) -> dict[str, Any]:
         "starts_at": tournament.starts_at,
         "ends_at": tournament.ends_at,
         "sales_open_at": tournament.sales_open_at,
+        "waiting_room": tournament.waiting_room,
         "venue": VenueSummary.model_validate(tournament.venue) if tournament.venue else None,
     }
 
@@ -525,6 +526,7 @@ class SaleInfo:
     currency: str
     sales_open_at: datetime
     ends_at: datetime
+    waiting_room: bool
     ticket_types: dict[uuid.UUID, TicketTypeInfo]
 
 
@@ -538,6 +540,7 @@ async def get_sale_info(session: AsyncSession, slug: str) -> SaleInfo:
                 Tournament.currency,
                 Tournament.sales_open_at,
                 Tournament.ends_at,
+                Tournament.waiting_room,
             ).where(Tournament.slug == slug, Tournament.status != "draft")
         )
     ).one_or_none()
@@ -559,6 +562,7 @@ async def get_sale_info(session: AsyncSession, slug: str) -> SaleInfo:
         currency=tournament.currency,
         sales_open_at=tournament.sales_open_at,
         ends_at=tournament.ends_at,
+        waiting_room=tournament.waiting_room,
         ticket_types={row.id: TicketTypeInfo(*row) for row in ticket_types},
     )
 

@@ -1,6 +1,6 @@
 """HTTP endpoints for accounts and sessions."""
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
 from lobbyd.identity import service
 from lobbyd.identity.deps import CurrentUser
@@ -13,12 +13,17 @@ from lobbyd.identity.schemas import (
 )
 from lobbyd.platform.db import SessionDep
 from lobbyd.platform.deps import SettingsDep
+from lobbyd.platform.ratelimit import AUTH, by_ip
 
 router = APIRouter()
+
+# Per address: slows password guessing and bulk account creation.
+_auth_limit = [Depends(by_ip(AUTH))]
 
 
 @router.post(
     "/auth/signup",
+    dependencies=_auth_limit,
     response_model=UserOut,
     status_code=status.HTTP_201_CREATED,
     tags=["auth"],
@@ -30,13 +35,19 @@ async def signup(body: SignupRequest, session: SessionDep) -> object:
     )
 
 
-@router.post("/auth/login", tags=["auth"], summary="Exchange email and password for tokens")
+@router.post(
+    "/auth/login",
+    dependencies=_auth_limit,
+    tags=["auth"],
+    summary="Exchange email and password for tokens",
+)
 async def login(body: LoginRequest, session: SessionDep, settings: SettingsDep) -> TokenPair:
     return await service.login(session, settings, email=body.email, password=body.password)
 
 
 @router.post(
     "/auth/refresh",
+    dependencies=_auth_limit,
     tags=["auth"],
     summary="Exchange a refresh token for a new pair",
     description="Refresh tokens are single use. Each call returns a replacement.",

@@ -12,7 +12,7 @@ from lobbyd.identity.router import router as identity_router
 from lobbyd.inventory.router import router as inventory_router
 from lobbyd.orders.router import router as orders_router
 from lobbyd.payments.provider import PaymentProvider, PaysimProvider
-from lobbyd.platform import health
+from lobbyd.platform import cache, health
 from lobbyd.platform.cache import create_redis
 from lobbyd.platform.db import create_engine, create_sessionmaker
 from lobbyd.platform.errors import (
@@ -30,6 +30,7 @@ def create_app(
     settings = settings or get_settings()
     configure_logging(json=settings.log_json)
     wire_modules()
+    cache.enabled = settings.cache_enabled
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

@@ -125,7 +125,9 @@ async def _tournaments(
                 "ends_at": starts_at + timedelta(hours=rng.choice([8, 12, 36, 60])),
                 # Always already open, so everything upcoming in the demo is bookable.
                 "sales_open_at": min(starts_at, now) - timedelta(days=rng.randint(14, 60)),
-                "status": "draft" if rng.random() < 0.1 else "published",
+                "status": "draft" if index and rng.random() < 0.1 else "published",
+                # The first tournament is the headline sale, with a waiting room.
+                "waiting_room": index == 0,
             }
         )
         ticket_types.append(

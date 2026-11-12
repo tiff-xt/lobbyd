@@ -1,9 +1,10 @@
 """Background work: `lobbyd-worker`.
 
-Three loops in one process:
+Four loops in one process:
 
 - relay:        outbox table -> Redis stream
 - consume:      Redis stream -> handlers (provider calls, emails)
+- admit:        lets queued buyers through waiting rooms at a steady rate
 - housekeeping: close lapsed holds and stale orders, poll the provider for
                 payments that have gone quiet, prune, and reconcile
 
@@ -30,12 +31,14 @@ from lobbyd.platform.cache import create_redis
 from lobbyd.platform.db import create_engine, create_sessionmaker
 from lobbyd.platform.events import EventContext
 from lobbyd.platform.logging import configure_logging
+from lobbyd.waitingroom import service as waitingroom
 from lobbyd.wiring import wire_modules
 
 log = structlog.get_logger()
 
 RELAY_IDLE_SECONDS = 0.25
 CONSUME_BLOCK_MS = 1000
+ADMIT_EVERY_SECONDS = 0.5
 SWEEP_EVERY_SECONDS = 5
 SLOW_EVERY_SECONDS = 300
 
@@ -62,6 +65,11 @@ async def _relay(ctx: EventContext) -> None:
     published = await outbox.relay_once(ctx.sessionmaker, ctx.redis)
     if published == 0:
         await asyncio.sleep(RELAY_IDLE_SECONDS)
+
+
+async def _admit(ctx: EventContext) -> None:
+    await waitingroom.admit(ctx.redis, ctx.settings)
+    await asyncio.sleep(ADMIT_EVERY_SECONDS)
 
 
 async def _consume(ctx: EventContext) -> None:
@@ -134,6 +142,7 @@ async def run() -> None:
     tasks = [
         asyncio.create_task(_forever("relay", _relay, ctx)),
         asyncio.create_task(_forever("consume", _consume, ctx)),
+        asyncio.create_task(_forever("admit", _admit, ctx)),
         asyncio.create_task(_forever("housekeeping", _Housekeeping(), ctx)),
     ]
     try:

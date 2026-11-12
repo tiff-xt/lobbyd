@@ -16,6 +16,12 @@ os.environ.setdefault(
 os.environ.setdefault("LOBBYD_REDIS_URL", "redis://localhost:6379/15")
 # Retry a failed event immediately, so tests do not wait out a real backoff.
 os.environ["LOBBYD_EVENT_RETRY_AFTER_MS"] = "0"
+# Hundreds of test buyers share one address. Limits are switched on by the
+# tests that are about them.
+os.environ["LOBBYD_RATE_LIMIT_ENABLED"] = "false"
+# Most tests change data and read it straight back. The cache is switched on
+# by the tests that are about it.
+os.environ["LOBBYD_CACHE_ENABLED"] = "false"
 
 import httpx
 import pytest

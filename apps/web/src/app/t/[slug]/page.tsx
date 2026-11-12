@@ -8,7 +8,7 @@ import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { Cover } from "@/components/Cover";
 import { MAX_SEATS, SeatPicker } from "@/components/SeatPicker";
 import { Notice, Spinner } from "@/components/ui";
-import { api, ApiError, idempotencyKey, unwrap } from "@/lib/api";
+import { api, ApiError, idempotencyKey, type QueueStatus, unwrap } from "@/lib/api";
 import { dateTime, money, plural } from "@/lib/format";
 import { useSession } from "@/lib/useSession";
 
@@ -40,13 +40,26 @@ export default function TournamentPage() {
     refetchInterval: 4000,
   });
 
+  // For sales with a waiting room: join it, then ask every second and a half
+  // where we stand, until it is our turn.
+  const queue = useQuery({
+    queryKey: ["queue", slug],
+    queryFn: async () =>
+      unwrap(await api.POST("/tournaments/{slug}/queue", { params: { path: { slug } } })),
+    enabled: signedIn && tournament.data?.waiting_room === true,
+    refetchInterval: (query) => (query.state.data?.status === "admitted" ? false : 1500),
+    staleTime: 0,
+  });
+  // Seats a refused hold told us are gone, before availability catches up.
+  const [gone, setGone] = useState<string[]>([]);
+
   // Read the clock once, when the page opens: render must not depend on it.
   const [now] = useState(() => Date.now());
   const [seats, setSeats] = useState<Set<string>>(new Set());
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const taken = useMemo(
-    () => new Set(availability.data?.taken_seat_ids ?? []),
-    [availability.data],
+    () => new Set([...(availability.data?.taken_seat_ids ?? []), ...gone]),
+    [availability.data, gone],
   );
   // A seat someone else took while it was selected simply drops out.
   const picked = useMemo(() => new Set([...seats].filter((id) => !taken.has(id))), [seats, taken]);
@@ -57,7 +70,12 @@ export default function TournamentPage() {
     mutationFn: async (key: string) =>
       unwrap(
         await api.POST("/holds", {
-          params: { header: { "Idempotency-Key": key } },
+          params: {
+            header: {
+              "Idempotency-Key": key,
+              "X-Admission-Token": queue.data?.admission_token ?? undefined,
+            },
+          },
           body: {
             tournament: slug,
             seat_ids: [...picked],
@@ -68,7 +86,19 @@ export default function TournamentPage() {
         }),
       ),
     onSuccess: (created) => router.push(`/checkout/${created.id}`),
-    onError: () => queryClient.invalidateQueries({ queryKey: ["availability", slug] }),
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        // The refusal names the seats that went: grey them out straight away.
+        if (Array.isArray(error.extra.seat_ids)) {
+          setGone((current) => [...current, ...(error.extra.seat_ids as string[])]);
+        }
+        // Our turn ran out, or we never had one: ask the queue again.
+        if (error.code === "admission_required") {
+          queryClient.invalidateQueries({ queryKey: ["queue", slug] });
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["availability", slug] });
+    },
   });
 
   if (tournament.isPending) return <Spinner label="Loading tournament" />;
@@ -110,6 +140,7 @@ export default function TournamentPage() {
   };
 
   const error = hold.error instanceof ApiError ? hold.error : null;
+  const mustQueue = t.waiting_room && queue.data?.status !== "admitted";
 
   return (
     <div className="space-y-8">
@@ -253,11 +284,13 @@ export default function TournamentPage() {
               </Notice>
             )}
 
+            {signedIn && t.waiting_room && queue.data && <QueuePanel status={queue.data} />}
+
             {signedIn ? (
               <button
                 type="button"
                 className="btn btn-primary w-full"
-                disabled={itemCount === 0 || hold.isPending || notOpen || closed}
+                disabled={itemCount === 0 || hold.isPending || notOpen || closed || mustQueue}
                 onClick={() => hold.mutate(idempotencyKey())}
               >
                 {hold.isPending ? "Holding" : "Hold for 10 minutes"}
@@ -273,6 +306,49 @@ export default function TournamentPage() {
             </p>
           </div>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function QueuePanel({ status }: { status: QueueStatus }) {
+  if (status.status === "admitted") {
+    return (
+      <div className="rise rounded-lg border border-ok/40 bg-ok/10 px-3.5 py-3" role="status">
+        <p className="font-display text-lg font-semibold text-ok">It is your turn</p>
+        <p className="text-sm text-muted">Pick your seats and hold them. Your turn lasts ten minutes.</p>
+      </div>
+    );
+  }
+  if (status.status === "lobby") {
+    return (
+      <div className="rounded-lg border border-line bg-bg/60 px-3.5 py-3" role="status">
+        <p className="label">Waiting room</p>
+        <p className="mt-1 font-display text-lg font-semibold">You are in the lobby</p>
+        <p className="text-sm text-muted">
+          {status.queue_length} waiting. When sales open, everyone here is placed in the queue in
+          random order, so arriving early earned you a place in the draw, not a head start.
+        </p>
+      </div>
+    );
+  }
+  if (status.status !== "queued") return null;
+  return (
+    <div className="rounded-lg border border-primary/40 bg-primary/5 px-3.5 py-3" role="status">
+      <p className="label">Waiting room</p>
+      <p className="mt-1 flex items-baseline gap-2">
+        <span className="font-mono text-4xl font-semibold tabular-nums text-primary">
+          <AnimatedNumber value={status.position ?? 0} format={(n) => n.toLocaleString("en")} />
+        </span>
+        <span className="text-sm text-muted">
+          {status.position === 1 ? "You are next" : "ahead of you, including you"}
+        </span>
+      </p>
+      <p className="text-sm text-muted">
+        About {status.estimated_wait_seconds}s. Keep this page open; your place is safe.
+      </p>
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-line">
+        <div className="pulse-soft h-full w-1/3 rounded-full bg-gradient-to-r from-primary to-secondary" />
       </div>
     </div>
   );

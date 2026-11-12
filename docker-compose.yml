@@ -39,6 +39,8 @@ services:
       LOBBYD_DATABASE_URL: postgresql+asyncpg://lobbyd:lobbyd@postgres:5432/lobbyd
       LOBBYD_REDIS_URL: redis://redis:6379/0
       LOBBYD_PAYSIM_URL: http://paysim:8001
+      # Every request reaches the API through the web client's proxy.
+      LOBBYD_TRUST_FORWARDED_FOR: "true"
     depends_on:
       postgres: { condition: service_healthy }
 

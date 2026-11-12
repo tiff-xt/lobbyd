@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import structlog
+from redis.asyncio import Redis
 from sqlalchemy import (
     ColumnElement,
     and_,
@@ -36,7 +37,7 @@ from sqlalchemy import (
     tuple_,
     update,
 )
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lobbyd.catalog import service as catalog
@@ -53,6 +54,8 @@ from lobbyd.inventory.schemas import (
 from lobbyd.platform.db import violated_constraint
 from lobbyd.platform.errors import ProblemError
 from lobbyd.platform.ids import uuid7
+from lobbyd.waitingroom import service as waitingroom
+from lobbyd.waitingroom.service import QueueStatus
 
 log = structlog.get_logger()
 
@@ -206,7 +209,12 @@ def _check_on_sale(info: SaleInfo, now: datetime) -> None:
 
 
 async def create_hold(
-    session: AsyncSession, settings: Settings, user_id: uuid.UUID, data: HoldCreate
+    session: AsyncSession,
+    settings: Settings,
+    user_id: uuid.UUID,
+    data: HoldCreate,
+    admission_token: str | None = None,
+    redis: Redis | None = None,
 ) -> HoldOut:
     """Take everything asked for off sale for a few minutes, or nothing at all.
 
@@ -216,6 +224,7 @@ async def create_hold(
     info = await catalog.get_sale_info(session, data.tournament)
     now = await _now(session)
     _check_on_sale(info, now)
+    waitingroom.require_admission(settings, info, user_id, admission_token)
 
     counted = []
     for item in sorted(data.items, key=lambda i: i.ticket_type_id):  # lock order
@@ -266,7 +275,9 @@ async def create_hold(
 
     # 4. Seats.
     if data.seat_ids:
-        for seat_id, ticket_type_id in await _claim_seats(session, info, hold, data.seat_ids):
+        for seat_id, ticket_type_id in await _claim_seats(
+            session, settings, info, hold, data.seat_ids, redis
+        ):
             items.append(
                 {
                     "ticket_type_id": ticket_type_id,
@@ -335,28 +346,63 @@ def _hold_exists(hold_id: uuid.UUID) -> ProblemError:
 
 
 async def _claim_seats(
-    session: AsyncSession, info: SaleInfo, hold: Hold, seat_ids: list[uuid.UUID]
+    session: AsyncSession,
+    settings: Settings,
+    info: SaleInfo,
+    hold: Hold,
+    seat_ids: list[uuid.UUID],
+    redis: Redis | None = None,
 ) -> list[tuple[uuid.UUID, uuid.UUID]]:
-    # Lock the rows in a fixed order first. Two overlapping claims then queue
-    # behind each other instead of deadlocking, and what we read is final.
-    rows = (
-        await session.execute(
-            select(
-                TournamentSeat.seat_id,
-                TournamentSeat.ticket_type_id,
-                case((_SEAT_IS_FREE, literal(True)), else_=literal(False)).label("free"),
+    """Claim every seat or raise. How depends on settings.claim_strategy.
+
+    Every strategy ends in the same conditional UPDATE, so all of them are
+    correct. They differ in what happens before it, and therefore in how long
+    buyers wait and how they fail under contention. docs/benchmarks.md has the
+    measurements behind the choice of "lock_then_claim".
+    """
+    strategy = settings.claim_strategy
+    mine = (
+        TournamentSeat.tournament_id == info.tournament_id,
+        TournamentSeat.seat_id.in_(seat_ids),
+    )
+    rows = select(
+        TournamentSeat.seat_id,
+        TournamentSeat.ticket_type_id,
+        case((_SEAT_IS_FREE, literal(True)), else_=literal(False)).label("free"),
+    ).where(*mine)
+
+    if strategy == "redis_lock":
+        await _redis_front_door(redis, info, seat_ids)
+
+    if strategy in ("lock_then_claim", "redis_lock"):
+        # Lock the rows in a fixed order first. Two overlapping claims then
+        # queue behind each other instead of deadlocking, and what we read is final.
+        found = (
+            await session.execute(rows.order_by(TournamentSeat.seat_id).with_for_update())
+        ).all()
+    elif strategy == "skip_locked":
+        # Same, but never wait: a seat another claim has locked right now is
+        # almost certainly about to be taken, so say "taken" at once. The
+        # price is an occasional false refusal when that other claim fails.
+        found = (
+            await session.execute(
+                rows.order_by(TournamentSeat.seat_id).with_for_update(skip_locked=True)
             )
-            .where(
-                TournamentSeat.tournament_id == info.tournament_id,
-                TournamentSeat.seat_id.in_(seat_ids),
+        ).all()
+        if len(found) != len(seat_ids):
+            known = await session.scalar(
+                select(func.count()).select_from(TournamentSeat).where(*mine)
             )
-            .order_by(TournamentSeat.seat_id)
-            .with_for_update()
-        )
-    ).all()
-    if len(rows) != len(seat_ids):
+            if known == len(seat_ids):
+                raise ProblemError(
+                    409, "seats_unavailable", "Some of these seats are no longer available."
+                )
+    else:  # claim_only: no locks taken up front, in no particular order
+        found = (await session.execute(rows)).all()
+
+    if len(found) != len(seat_ids):
         raise ProblemError(422, "unknown_seat", "Every seat must be on sale for this tournament.")
-    taken = [str(row.seat_id) for row in rows if not row.free]
+    taken = [str(row.seat_id) for row in found if not row.free]
     if taken:
         raise ProblemError(
             409, "seats_unavailable", "Some of these seats are no longer available.", seat_ids=taken
@@ -364,19 +410,59 @@ async def _claim_seats(
 
     # The claim itself: still conditional, so it is correct on its own even
     # if the check above were ever removed or bypassed.
-    claimed = await session.execute(
-        update(TournamentSeat)
-        .where(
-            TournamentSeat.tournament_id == info.tournament_id,
-            TournamentSeat.seat_id.in_(seat_ids),
-            _SEAT_IS_FREE,
-        )
-        .values(status="held", hold_id=hold.id, held_until=hold.expires_at)
-        .returning(TournamentSeat.seat_id)
-    )
-    if len(claimed.all()) != len(seat_ids):
-        raise ProblemError(409, "seats_unavailable", "Some of these seats are no longer available.")
-    return [(row.seat_id, row.ticket_type_id) for row in rows]
+    try:
+        async with session.begin_nested():
+            claimed = await session.execute(
+                update(TournamentSeat)
+                .where(*mine, _SEAT_IS_FREE)
+                .values(status="held", hold_id=hold.id, held_until=hold.expires_at)
+                .returning(TournamentSeat.seat_id)
+            )
+            if len(claimed.all()) != len(seat_ids):
+                raise ProblemError(
+                    409, "seats_unavailable", "Some of these seats are no longer available."
+                )
+    except DBAPIError as exc:
+        # Only reachable with "claim_only": two claims locked overlapping
+        # rows in different orders and Postgres cancelled one of them, after
+        # making both wait out its deadlock timeout.
+        if "deadlock" not in str(exc).lower():
+            raise
+        stats.deadlocks += 1
+        raise ProblemError(
+            409, "seats_unavailable", "Some of these seats are no longer available."
+        ) from exc
+    return [(row.seat_id, row.ticket_type_id) for row in found]
+
+
+class _Stats:
+    def __init__(self) -> None:
+        self.deadlocks = 0
+
+
+stats = _Stats()
+
+
+async def _redis_front_door(redis: Redis | None, info: SaleInfo, seat_ids: list[uuid.UUID]) -> None:
+    """Experiment: take a short Redis lock per seat before touching Postgres.
+
+    The database is still the authority, so this cannot cause a wrong sale.
+    It measures whether refusing losers in Redis is cheaper than letting
+    them queue on row locks. The locks only cover the claim, a few seconds.
+    """
+    if redis is None:
+        return
+    taken: list[str] = []
+    for seat_id in sorted(seat_ids):
+        key = f"seatlock:{info.tournament_id}:{seat_id}"
+        if await redis.set(key, "1", nx=True, px=3000):
+            taken.append(key)
+        else:
+            if taken:
+                await redis.delete(*taken)
+            raise ProblemError(
+                409, "seats_unavailable", "Some of these seats are no longer available."
+            )
 
 
 # --- letting go ------------------------------------------------------------------
@@ -659,3 +745,14 @@ def _hold_expired() -> ProblemError:
     return ProblemError(
         409, "hold_expired", "This hold has expired and its inventory went back on sale."
     )
+
+
+async def queue_status(
+    session: AsyncSession, redis: Redis, settings: Settings, slug: str, user_id: uuid.UUID
+) -> QueueStatus:
+    """The caller's place in a tournament's waiting room, joining it if need be."""
+    info = await catalog.get_sale_info(session, slug)
+    now = await _now(session)
+    if info.status not in ("published", "live") or now >= info.ends_at:
+        raise ProblemError(409, "sales_closed", "This tournament is no longer on sale.")
+    return await waitingroom.join(redis, settings, info, user_id, now)

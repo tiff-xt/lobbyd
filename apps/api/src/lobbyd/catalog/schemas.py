@@ -130,6 +130,9 @@ class TournamentCreate(BaseModel):
     starts_at: AwareDatetime
     ends_at: AwareDatetime
     sales_open_at: AwareDatetime
+    waiting_room: bool = Field(
+        default=False, description="Make buyers queue for a turn. For oversubscribed sales."
+    )
 
     @model_validator(mode="after")
     def _check_dates(self) -> Self:
@@ -152,6 +155,7 @@ class TournamentUpdate(BaseModel):
     starts_at: AwareDatetime | None = None
     ends_at: AwareDatetime | None = None
     sales_open_at: AwareDatetime | None = None
+    waiting_room: bool | None = None
 
 
 class TicketTypeCreate(BaseModel):
@@ -207,6 +211,7 @@ class TournamentSummary(BaseModel):
     starts_at: AwareDatetime
     ends_at: AwareDatetime
     sales_open_at: AwareDatetime
+    waiting_room: bool
     venue: VenueSummary | None
 
 

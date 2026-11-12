@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://lobbyd:lobbyd@localhost:5432/lobbyd"
     redis_url: str = "redis://localhost:6379/0"
 
+    redis_max_connections: int = 50
+
     # Pool sizing is revisited with measurements in the performance phase.
     db_pool_size: int = 10
     db_max_overflow: int = 10
@@ -42,6 +44,23 @@ class Settings(BaseSettings):
     # A failed event is retried after this long, this many times, then set aside.
     event_retry_after_ms: int = 10_000
     event_max_attempts: int = 5
+
+    # How many queued buyers are let through to booking each second, and how
+    # long their turn lasts. Set from the benchmark (docs/benchmarks.md).
+    waiting_room_admit_per_second: float = 20
+    admission_ttl_seconds: int = 10 * 60
+
+    # How seats are claimed. "lock_then_claim" is the production choice; the
+    # others exist to be measured against it (docs/benchmarks.md).
+    claim_strategy: Literal["lock_then_claim", "claim_only", "skip_locked", "redis_lock"] = (
+        "lock_then_claim"
+    )
+    # Off only for benchmarking what the cache is worth.
+    cache_enabled: bool = True
+
+    rate_limit_enabled: bool = True
+    # Set only when every request arrives through a proxy we run ourselves.
+    trust_forwarded_for: bool = False
 
     log_json: bool = False
 
