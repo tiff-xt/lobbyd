@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from lobbyd.catalog.schemas import SeatLabel, TournamentRef
 from lobbyd.tickets.service import TicketOut
 
 
@@ -28,7 +29,9 @@ class PaymentOut(BaseModel):
 
 class OrderItemOut(BaseModel):
     ticket_type_id: uuid.UUID
+    ticket_type_name: str
     seat_id: uuid.UUID | None
+    seat: SeatLabel | None
     quantity: int
     unit_price_cents: int
 
@@ -36,6 +39,7 @@ class OrderItemOut(BaseModel):
 class OrderOut(BaseModel):
     id: uuid.UUID
     tournament_id: uuid.UUID
+    tournament: TournamentRef
     hold_id: uuid.UUID
     status: str
     total_cents: int

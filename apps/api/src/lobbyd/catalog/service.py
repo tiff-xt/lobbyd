@@ -26,6 +26,7 @@ from lobbyd.catalog.models import (
 from lobbyd.catalog.schemas import (
     GameCount,
     RowOut,
+    SeatLabel,
     SeatMap,
     SeatOut,
     SectionLayout,
@@ -34,6 +35,7 @@ from lobbyd.catalog.schemas import (
     TicketTypeOut,
     TournamentCreate,
     TournamentOut,
+    TournamentRef,
     TournamentSummary,
     TournamentUpdate,
     VenueCreate,
@@ -571,3 +573,44 @@ async def seat_assignments(
         .where(TicketTypeSection.tournament_id == tournament_id)
     )
     return [(seat_id, ticket_type_id) for seat_id, ticket_type_id in rows]
+
+
+async def seat_labels(
+    session: AsyncSession, seat_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, SeatLabel]:
+    if not seat_ids:
+        return {}
+    rows = await session.execute(
+        select(Seat.id, Section.name, Seat.row_label, Seat.number)
+        .join(Section, Section.id == Seat.section_id)
+        .where(Seat.id.in_(seat_ids))
+    )
+    return {
+        seat_id: SeatLabel(section=section, row=row, number=number)
+        for seat_id, section, row, number in rows
+    }
+
+
+async def tournament_refs(
+    session: AsyncSession, tournament_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, TournamentRef]:
+    rows = await session.execute(
+        select(
+            Tournament.id, Tournament.slug, Tournament.title, Tournament.starts_at, Venue.timezone
+        )
+        .outerjoin(Venue, Venue.id == Tournament.venue_id)
+        .where(Tournament.id.in_(tournament_ids))
+    )
+    return {
+        tournament_id: TournamentRef(slug=slug, title=title, starts_at=starts_at, timezone=timezone)
+        for tournament_id, slug, title, starts_at, timezone in rows
+    }
+
+
+async def ticket_type_names(
+    session: AsyncSession, ticket_type_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    rows = await session.execute(
+        select(TicketType.id, TicketType.name).where(TicketType.id.in_(ticket_type_ids))
+    )
+    return {ticket_type_id: name for ticket_type_id, name in rows}

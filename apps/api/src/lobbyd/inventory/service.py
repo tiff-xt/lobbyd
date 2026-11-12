@@ -153,12 +153,23 @@ async def _hold_out(session: AsyncSession, hold: Hold) -> HoldOut:
             .order_by(HoldItem.id)
         )
     ).all()
+    seats = await catalog.seat_labels(session, [i.seat_id for i in items if i.seat_id])
+    names = await catalog.ticket_type_names(session, [i.ticket_type_id for i in items])
+    tournament = (await catalog.tournament_refs(session, [hold.tournament_id]))[hold.tournament_id]
     return HoldOut(
         id=hold.id,
         tournament_id=hold.tournament_id,
+        tournament=tournament,
         status=hold.status,
         expires_at=hold.expires_at,
-        items=[HoldItemOut(**item._asdict()) for item in items],
+        items=[
+            HoldItemOut(
+                **item._asdict(),
+                ticket_type_name=names[item.ticket_type_id],
+                seat=seats.get(item.seat_id) if item.seat_id else None,
+            )
+            for item in items
+        ],
         total_cents=sum(item.quantity * item.unit_price_cents for item in items),
         currency=hold.currency,
     )

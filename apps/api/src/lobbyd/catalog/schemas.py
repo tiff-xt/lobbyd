@@ -218,3 +218,21 @@ class TournamentOut(TournamentSummary):
 class GameCount(BaseModel):
     game: str
     tournaments: int
+
+
+# --- shared with the booking modules ------------------------------------------
+
+
+class SeatLabel(BaseModel):
+    """Where a seat is, in words a person can find it by."""
+
+    section: str
+    row: str
+    number: int
+
+
+class TournamentRef(BaseModel):
+    slug: str
+    title: str
+    starts_at: AwareDatetime
+    timezone: str | None = Field(description="The venue's timezone. Null for online events.")

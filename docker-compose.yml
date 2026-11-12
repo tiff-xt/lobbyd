@@ -1,5 +1,6 @@
 # Local development stack: `docker compose up --build`
-# API docs are then at http://localhost:8000/docs
+# The demo client is then at http://localhost:3000 and the API docs at
+# http://localhost:8000/docs
 #
 # The credentials below are for local use only.
 
@@ -72,6 +73,17 @@ services:
     environment:
       PAYSIM_WEBHOOK_URL: http://api:8000/webhooks/payments
     ports: ["8001:8001"]
+
+  # The demo client: http://localhost:3000
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      LOBBYD_API_URL: http://api:8000
+    ports: ["3000:3000"]
+    depends_on:
+      api: { condition: service_healthy }
 
 volumes:
   pgdata:

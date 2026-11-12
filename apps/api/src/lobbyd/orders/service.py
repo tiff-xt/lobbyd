@@ -19,6 +19,7 @@ import structlog
 from sqlalchemy import ColumnElement, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lobbyd.catalog import service as catalog
 from lobbyd.config import Settings
 from lobbyd.inventory import service as inventory
 from lobbyd.orders.models import Order, OrderItem
@@ -238,32 +239,40 @@ async def _orders(session: AsyncSession, *where: ColumnElement[bool]) -> list[Or
         return []
     order_ids = [order.id for order in orders]
     items: dict[uuid.UUID, list[OrderItemOut]] = {order_id: [] for order_id in order_ids}
-    rows = await session.execute(
-        select(
-            OrderItem.order_id,
-            OrderItem.ticket_type_id,
-            OrderItem.seat_id,
-            OrderItem.quantity,
-            OrderItem.unit_price_cents,
+    rows = (
+        await session.execute(
+            select(
+                OrderItem.order_id,
+                OrderItem.ticket_type_id,
+                OrderItem.seat_id,
+                OrderItem.quantity,
+                OrderItem.unit_price_cents,
+            )
+            .where(OrderItem.order_id.in_(order_ids))
+            .order_by(OrderItem.id)
         )
-        .where(OrderItem.order_id.in_(order_ids))
-        .order_by(OrderItem.id)
-    )
+    ).all()
+    seats = await catalog.seat_labels(session, [row.seat_id for row in rows if row.seat_id])
+    names = await catalog.ticket_type_names(session, [row.ticket_type_id for row in rows])
     for order_id, ticket_type_id, seat_id, quantity, unit_price_cents in rows:
         items[order_id].append(
             OrderItemOut(
                 ticket_type_id=ticket_type_id,
+                ticket_type_name=names[ticket_type_id],
                 seat_id=seat_id,
+                seat=seats.get(seat_id) if seat_id else None,
                 quantity=quantity,
                 unit_price_cents=unit_price_cents,
             )
         )
+    tournaments = await catalog.tournament_refs(session, [order.tournament_id for order in orders])
     issued = await tickets.for_orders(session, order_ids)
     paid_with = await payments.for_orders(session, order_ids)
     return [
         OrderOut(
             id=order.id,
             tournament_id=order.tournament_id,
+            tournament=tournaments[order.tournament_id],
             hold_id=order.hold_id,
             status=order.status,
             total_cents=order.total_cents,

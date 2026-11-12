@@ -46,6 +46,7 @@ root_package = "lobbyd"
 name = "modules depend only on the layers beneath them"
 type = "layers"
 layers = [
+    "lobbyd.openapi",
     "lobbyd.main | lobbyd.seed | lobbyd.cli | lobbyd.worker",
     "lobbyd.wiring | lobbyd.reconcile",
     "lobbyd.orders",

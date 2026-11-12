@@ -5,6 +5,7 @@
     "sharedGlobals": [
       "{workspaceRoot}/pyproject.toml",
       "{workspaceRoot}/uv.lock",
+      "{workspaceRoot}/package-lock.json",
       "{workspaceRoot}/.python-version",
       "{workspaceRoot}/.github/workflows/ci.yml"
     ],
@@ -14,6 +15,7 @@
     "lint": { "cache": true, "inputs": ["default"] },
     "typecheck": { "cache": true, "inputs": ["default"] },
     "boundaries": { "cache": true, "inputs": ["default"] },
+    "build": { "cache": true, "inputs": ["default"] },
     "test": { "cache": false }
   }
 }

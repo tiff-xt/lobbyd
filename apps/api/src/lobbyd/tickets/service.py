@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lobbyd.catalog import service as catalog
+from lobbyd.catalog.schemas import SeatLabel
 from lobbyd.platform.ids import uuid7
 from lobbyd.tickets.models import Ticket
 
@@ -14,7 +16,9 @@ from lobbyd.tickets.models import Ticket
 class TicketOut(BaseModel):
     id: uuid.UUID
     ticket_type_id: uuid.UUID
+    ticket_type_name: str
     seat_id: uuid.UUID | None
+    seat: SeatLabel | None
     status: str
 
 
@@ -58,13 +62,24 @@ async def for_orders(
     session: AsyncSession, order_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, list[TicketOut]]:
     tickets: dict[uuid.UUID, list[TicketOut]] = {order_id: [] for order_id in order_ids}
-    rows = await session.execute(
-        select(Ticket.order_id, Ticket.id, Ticket.ticket_type_id, Ticket.seat_id, Ticket.status)
-        .where(Ticket.order_id.in_(order_ids))
-        .order_by(Ticket.id)
-    )
+    rows = (
+        await session.execute(
+            select(Ticket.order_id, Ticket.id, Ticket.ticket_type_id, Ticket.seat_id, Ticket.status)
+            .where(Ticket.order_id.in_(order_ids))
+            .order_by(Ticket.id)
+        )
+    ).all()
+    seats = await catalog.seat_labels(session, [row.seat_id for row in rows if row.seat_id])
+    names = await catalog.ticket_type_names(session, [row.ticket_type_id for row in rows])
     for order_id, ticket_id, ticket_type_id, seat_id, status in rows:
         tickets[order_id].append(
-            TicketOut(id=ticket_id, ticket_type_id=ticket_type_id, seat_id=seat_id, status=status)
+            TicketOut(
+                id=ticket_id,
+                ticket_type_id=ticket_type_id,
+                ticket_type_name=names[ticket_type_id],
+                seat_id=seat_id,
+                seat=seats.get(seat_id) if seat_id else None,
+                status=status,
+            )
         )
     return tickets

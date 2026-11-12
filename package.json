@@ -4,9 +4,13 @@
   "description": "Workspace tooling for lobbyd. Application code lives in apps/.",
   "license": "MIT",
   "scripts": {
-    "check": "nx run-many -t lint typecheck boundaries test"
+    "check": "nx run-many -t lint typecheck boundaries test build"
   },
   "devDependencies": {
     "nx": "24.0.6"
-  }
+  },
+  "workspaces": [
+    "apps/web",
+    "libs/api-client"
+  ]
 }

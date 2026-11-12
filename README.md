@@ -4,7 +4,7 @@ Ticketing and registration backend for gaming tournaments and LAN events. FastAP
 
 Teams register for a limited number of competitor slots, spectators pick seats from a venue map, everyone pays, and tickets are scanned at the door. Popular tournaments sell out in seconds, so the interesting part is staying correct and fast when thousands of people want the same seats at once.
 
-> **Status: phase 4 of 9 complete.** Browse, hold, pay, and receive tickets, with payments that behave like a real provider's: asynchronous, confirmed by signed webhooks, and sometimes late, duplicated, out of order, or silent. Next is performance under load (caching, rate limits, the waiting room, benchmarks).
+> **Status: phases 1 to 4 and the demo client are complete.** You can browse tournaments, pick seats on a live map, hold them, pay through a simulated provider that can be told to misbehave, and receive tickets. Next is performance under load (caching, rate limits, the waiting room, benchmarks).
 
 ## Why this project exists
 
@@ -32,6 +32,15 @@ Teams register for a limited number of competitor slots, spectators pick seats f
 | Workspace | Nx monorepo, uv for Python, Docker Compose, GitHub Actions |
 
 **Free tooling only.** Everything here is open source and runs locally with Docker Compose at no cost. The hosted demo uses free tiers only, and nothing in the project requires a paid plan or a credit card.
+
+## The demo client
+
+A deliberately thin Next.js app: the backend is the project. A few things in it are still worth a look.
+
+- **Types come from the API.** `libs/api-client` is generated from the backend's OpenAPI document, and every request in the client is checked against it. Rename a field in Python and the TypeScript build fails. CI also fails if the generated types are stale.
+- **No CORS, no API address in the bundle.** The browser only talks to its own origin; a route handler forwards `/api/*` to the backend, whose address is a server-side setting.
+- **The seat map scales.** A 12,000 seat arena is shown as a section overview, then one section's seats at a time, with availability refreshed every few seconds. A seat someone else takes while you have it selected drops out of your basket with a message.
+- **Retries are safe from the first click.** Each "hold" and "pay" action carries an idempotency key, so a double click or a retried request cannot hold or charge twice.
 
 ## How overselling is prevented
 
@@ -75,13 +84,15 @@ Try the failure modes yourself with the `payment_method` field of `POST /orders`
 docker compose up --build
 ```
 
-The API is then at http://localhost:8000, with interactive docs at http://localhost:8000/docs.
+Then open **http://localhost:3000** for the demo client. The API is at http://localhost:8000, with interactive docs at http://localhost:8000/docs.
 
 To fill it with demo data (three venues including a 12,000 seat arena, 60 bookable tournaments, and organizer and buyer logins that it prints):
 
 ```bash
 docker compose run --rm api lobbyd-seed
 ```
+
+In the client, choose **Sign in**, then **Use the demo buyer**. Pick a tournament, choose seats, hold them, and at checkout try the different payment options to watch the system handle a declined card, a duplicated confirmation, or a provider that goes quiet.
 
 **For development** (needs Node 22 and [uv](https://docs.astral.sh/uv/)):
 
@@ -93,6 +104,7 @@ npx nx migrate api                      # apply database migrations
 npx nx serve api                        # API with reload on http://localhost:8000
 npx nx serve paysim                     # payment simulator on http://localhost:8001
 cd apps/api && uv run lobbyd-worker     # background work (payments, emails, housekeeping)
+npx nx serve web                        # demo client on http://localhost:3000
 ```
 
 | Command | What it does |
@@ -103,6 +115,7 @@ cd apps/api && uv run lobbyd-worker     # background work (payments, emails, hou
 | `npx nx boundaries api` | Checks module boundaries with import-linter |
 | `uv run lobbyd-seed` | Demo data. `--tournaments 50000` for a dataset big enough to study query plans; `--reset` wipes first |
 | `uv run lobbyd-admin set-role <email> organizer` | Change an account's role |
+| `npx nx generate api-client` | Regenerate the web client's TypeScript types from the API |
 | `npm run check` | All of the above for every project |
 
 Nx is only the task runner. Each target is a plain `uv run ...` command, so `cd apps/api && uv run pytest` works without Node.
@@ -125,6 +138,8 @@ apps/api/            FastAPI application
   migrations/        Alembic migrations (the schema's source of truth)
   tests/
 apps/paysim/         payment provider simulator (separate service)
+apps/web/            demo client (Next.js)
+libs/api-client/     TypeScript types generated from the API's OpenAPI document
 docs/                design, data model, decision records, roadmap
 ops/                 local infrastructure config
 ```

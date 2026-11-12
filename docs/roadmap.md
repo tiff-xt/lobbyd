@@ -13,7 +13,7 @@ Each phase ends with something that runs and is tested. A phase is done when its
 | 6 | Teams and waitlist | Not started |
 | 7 | Check-in and live brackets | Not started |
 | 8 | Observability and deployment | Not started |
-| 9 | Demo client | Not started |
+| 9 | Demo client | Done (ahead of order; the waiting room and brackets screens follow their phases) |
 
 ## Phase 0. Design
 

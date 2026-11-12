@@ -1,0 +1,46 @@
+{
+  "name": "web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/web/src",
+  "implicitDependencies": [
+    "api-client"
+  ],
+  "targets": {
+    "serve": {
+      "command": "npm run dev",
+      "options": {
+        "cwd": "apps/web"
+      },
+      "continuous": true
+    },
+    "build": {
+      "command": "npm run build",
+      "options": {
+        "cwd": "apps/web"
+      },
+      "cache": true,
+      "outputs": [
+        "{projectRoot}/.next"
+      ]
+    },
+    "lint": {
+      "command": "npm run lint",
+      "options": {
+        "cwd": "apps/web"
+      }
+    },
+    "typecheck": {
+      "command": "npm run typecheck",
+      "options": {
+        "cwd": "apps/web"
+      }
+    },
+    "test": {
+      "command": "npm test",
+      "options": {
+        "cwd": "apps/web"
+      }
+    }
+  }
+}

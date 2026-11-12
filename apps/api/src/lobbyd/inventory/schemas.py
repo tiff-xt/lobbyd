@@ -6,6 +6,8 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from lobbyd.catalog.schemas import SeatLabel, TournamentRef
+
 MAX_SEATS_PER_HOLD = 8
 MAX_QUANTITY = 8
 
@@ -40,7 +42,9 @@ class HoldCreate(BaseModel):
 
 class HoldItemOut(BaseModel):
     ticket_type_id: uuid.UUID
+    ticket_type_name: str
     seat_id: uuid.UUID | None
+    seat: SeatLabel | None
     quantity: int
     unit_price_cents: int
 
@@ -48,6 +52,7 @@ class HoldItemOut(BaseModel):
 class HoldOut(BaseModel):
     id: uuid.UUID
     tournament_id: uuid.UUID
+    tournament: TournamentRef
     status: str
     expires_at: datetime
     items: list[HoldItemOut]

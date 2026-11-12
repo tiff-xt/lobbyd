@@ -1,0 +1,25 @@
+{
+  "name": "api-client",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/api-client/src",
+  "implicitDependencies": [
+    "api"
+  ],
+  "targets": {
+    "generate": {
+      "command": "npm run generate",
+      "options": {
+        "cwd": "libs/api-client"
+      },
+      "dependsOn": [
+        {
+          "projects": [
+            "api"
+          ],
+          "target": "openapi"
+        }
+      ]
+    }
+  }
+}

@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import insert, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lobbyd.catalog import service as catalog
@@ -239,7 +240,16 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--reset", action="store_true", help="Wipe ALL data first")
     args = parser.parse_args()
-    asyncio.run(seed(tournaments=args.tournaments, random_seed=args.seed, reset=args.reset))
+    for attempt in range(1, 4):
+        try:
+            asyncio.run(seed(tournaments=args.tournaments, random_seed=args.seed, reset=args.reset))
+            return
+        except DBAPIError as exc:
+            # Wiping every table can collide with a running API or worker.
+            # Postgres picks one side to cancel; if it picked us, go again.
+            if "deadlock" not in str(exc).lower() or attempt == 3:
+                raise
+            sys.stderr.write("The database was busy; retrying.\n")
 
 
 if __name__ == "__main__":

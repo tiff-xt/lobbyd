@@ -3,36 +3,58 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "apps/api/src",
-  "implicitDependencies": ["paysim"],
+  "implicitDependencies": [
+    "paysim"
+  ],
   "targets": {
     "serve": {
       "command": "uv run uvicorn lobbyd.main:app --reload --port 8000",
-      "options": { "cwd": "apps/api" },
+      "options": {
+        "cwd": "apps/api"
+      },
       "continuous": true
     },
     "migrate": {
       "command": "uv run alembic upgrade head",
-      "options": { "cwd": "apps/api" }
+      "options": {
+        "cwd": "apps/api"
+      }
     },
     "lint": {
       "command": "uv run ruff check . && uv run ruff format --check .",
-      "options": { "cwd": "apps/api" }
+      "options": {
+        "cwd": "apps/api"
+      }
     },
     "format": {
       "command": "uv run ruff check --fix . && uv run ruff format .",
-      "options": { "cwd": "apps/api" }
+      "options": {
+        "cwd": "apps/api"
+      }
     },
     "typecheck": {
       "command": "uv run mypy src tests",
-      "options": { "cwd": "apps/api" }
+      "options": {
+        "cwd": "apps/api"
+      }
     },
     "boundaries": {
       "command": "uv run lint-imports",
-      "options": { "cwd": "apps/api" }
+      "options": {
+        "cwd": "apps/api"
+      }
     },
     "test": {
       "command": "uv run pytest",
-      "options": { "cwd": "apps/api" }
+      "options": {
+        "cwd": "apps/api"
+      }
+    },
+    "openapi": {
+      "command": "uv run python -m lobbyd.openapi > ../../libs/api-client/openapi.json",
+      "options": {
+        "cwd": "apps/api"
+      }
     }
   }
 }

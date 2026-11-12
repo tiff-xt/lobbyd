@@ -52,10 +52,18 @@ jobs:
       # Sets NX_BASE and NX_HEAD: the last green commit on main, or the PR base.
       - uses: nrwl/nx-set-shas@v4
 
-      - run: npx nx affected -t lint typecheck boundaries test
+      - run: npx nx affected -t lint typecheck boundaries test build
 
-  image:
+      # The web client's types are generated from the API. If the API changed
+      # and they were not regenerated, fail here instead of at run time.
+      - name: API client types are up to date
+        run: |
+          npx nx run api-client:generate
+          git diff --exit-code -- libs/api-client
+
+  images:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f apps/api/Dockerfile -t lobbyd-api .
+      - run: docker build -f apps/web/Dockerfile -t lobbyd-web .
