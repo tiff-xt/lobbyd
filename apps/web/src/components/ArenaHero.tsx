@@ -42,8 +42,8 @@ const SEATS = buildSeats();
  * The hero: an arena seen from the stage, and it is alive.
  *
  * - Stage lights sweep across the crowd.
- * - A follow-spot tracks the pointer; seats under it rise and brighten. With
- *   no pointer nearby it wanders by itself.
+ * - Seats near the pointer rise and brighten. With no pointer nearby, the
+ *   ripple wanders through the stands by itself.
  * - Every few seconds a wave runs through the stands.
  * - Seats sell while you watch: a free one flashes gold, then goes dark.
  * - Click anywhere to claim a burst of seats.
@@ -55,7 +55,6 @@ const SEATS = buildSeats();
 export function ArenaHero({ className = "" }: { className?: string }) {
   const seats = SEATS;
   const svg = useRef<SVGSVGElement>(null);
-  const spot = useRef<SVGCircleElement>(null);
   const nodes = useRef<(SVGRectElement | null)[]>([]);
 
   useEffect(() => {
@@ -124,13 +123,11 @@ export function ArenaHero({ className = "" }: { className?: string }) {
       if (!visible || document.hidden) return;
       const t = now / 1000;
 
-      // The follow-spot eases toward the pointer, or wanders when left alone.
+      // The point seats react to eases toward the pointer, or wanders when left alone.
       const targetX = pointer.active ? pointer.x : 300 + Math.cos(t * 0.45) * 190;
       const targetY = pointer.active ? pointer.y : 135 + Math.sin(t * 0.7) * 60;
       light.x += (targetX - light.x) * 0.1;
       light.y += (targetY - light.y) * 0.1;
-      spot.current?.setAttribute("cx", light.x.toFixed(1));
-      spot.current?.setAttribute("cy", light.y.toFixed(1));
 
       // The whole arena leans a little toward the pointer.
       tilt.x += ((pointer.active ? (pointer.y / HEIGHT - 0.5) * -7 : 0) - tilt.x) * 0.06;
@@ -185,11 +182,6 @@ export function ArenaHero({ className = "" }: { className?: string }) {
           <stop offset="0.45" stopColor="#ff9f1c" stopOpacity="0.1" />
           <stop offset="1" stopColor="#ff9f1c" stopOpacity="0" />
         </radialGradient>
-        <radialGradient id="arena-spot">
-          <stop offset="0" stopColor="#fff3c4" stopOpacity="0.75" />
-          <stop offset="0.4" stopColor="#ffd166" stopOpacity="0.28" />
-          <stop offset="1" stopColor="#ffd166" stopOpacity="0" />
-        </radialGradient>
         <linearGradient id="arena-beam" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#ffe9a8" stopOpacity="0.55" />
           <stop offset="1" stopColor="#ffd166" stopOpacity="0" />
@@ -224,8 +216,6 @@ export function ArenaHero({ className = "" }: { className?: string }) {
         />
       ))}
 
-      {/* The follow-spot. "screen" blending makes it brighten what is under it. */}
-      <circle ref={spot} cx="300" cy="130" r="105" fill="url(#arena-spot)" style={{ mixBlendMode: "screen" }} />
       {/* The stage, lit from above. */}
       <path
         d="M215 30 Q300 62 385 30 L385 18 Q300 44 215 18Z"
