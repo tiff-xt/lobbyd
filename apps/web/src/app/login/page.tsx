@@ -94,7 +94,7 @@ function LoginForm() {
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
         <button
           type="button"
-          className="text-cyan hover:underline"
+          className="text-secondary hover:underline"
           onClick={() => {
             submit.reset();
             setMode(mode === "signin" ? "signup" : "signin");

@@ -150,7 +150,7 @@ export default function TournamentPage() {
                           ? `One slot for a team of ${t.team_size}`
                           : "Standing, no assigned seat"}{" "}
                         ·{" "}
-                        <span className={available === 0 ? "text-red" : available <= 5 ? "text-amber" : ""}>
+                        <span className={available === 0 ? "text-danger" : available <= 5 ? "text-warn" : ""}>
                           {available === 0 ? "Sold out" : `${available} of ${type.capacity} left`}
                         </span>
                       </p>

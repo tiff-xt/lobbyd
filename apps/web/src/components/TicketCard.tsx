@@ -10,7 +10,7 @@ export function TicketCard({ ticket, title }: { ticket: Ticket; title: string })
     let current = true;
     // For now the code is just the ticket's id. Signed tokens that a scanner
     // can verify offline arrive with check-in (roadmap phase 7).
-    QRCode.toString(ticket.id, { type: "svg", margin: 1, color: { dark: "#07080d", light: "#ffffff" } })
+    QRCode.toString(ticket.id, { type: "svg", margin: 1, color: { dark: "#09090a", light: "#ffffff" } })
       .then((svg) => current && setQr(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`))
       .catch(() => current && setQr(null));
     return () => {

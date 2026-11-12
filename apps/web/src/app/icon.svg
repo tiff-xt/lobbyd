@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#8b5cf6"/>
-      <stop offset="1" stop-color="#22d3ee"/>
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ff8a00"/>
     </linearGradient>
     <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
       <feGaussianBlur stdDeviation="2.2" result="b"/>
@@ -12,7 +12,7 @@
   <!-- A ticket: a rounded square with a notch bitten out of each side. -->
   <path fill="url(#g)" d="M18 4h28a14 14 0 0 1 14 14v7a7 7 0 0 0 0 14v7a14 14 0 0 1-14 14H18A14 14 0 0 1 4 46v-7a7 7 0 0 0 0-14v-7A14 14 0 0 1 18 4z"/>
   <!-- The d of lobbyd. Its bowl is a seat... -->
-  <path fill="#07080d" fill-rule="evenodd" d="M40.5 13a4 4 0 0 1 4 4v29a7.5 7.5 0 0 1-7.5 7.5H24A9.5 9.5 0 0 1 14.5 44v-7A9.5 9.5 0 0 1 24 27.5h12.5V17a4 4 0 0 1 4-4zM24.5 34.5a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h9a3 3 0 0 0 3-3v-9z"/>
+  <path fill="#09090a" fill-rule="evenodd" d="M40.5 13a4 4 0 0 1 4 4v29a7.5 7.5 0 0 1-7.5 7.5H24A9.5 9.5 0 0 1 14.5 44v-7A9.5 9.5 0 0 1 24 27.5h12.5V17a4 4 0 0 1 4-4zM24.5 34.5a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h9a3 3 0 0 0 3-3v-9z"/>
   <!-- ...and the lit square in it is the one that is yours. -->
   <rect x="25" y="36.75" width="7.5" height="7.5" rx="2" fill="#fff" filter="url(#glow)"/>
 </svg>

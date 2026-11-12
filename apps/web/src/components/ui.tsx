@@ -5,7 +5,7 @@ export function Spinner({ label = "Loading" }: { label?: string }) {
     <span role="status" className="inline-flex items-center gap-2 text-sm text-muted">
       <span
         aria-hidden
-        className="size-4 animate-spin rounded-full border-2 border-line border-t-cyan"
+        className="size-4 animate-spin rounded-full border-2 border-line border-t-secondary"
       />
       {label}
     </span>
@@ -21,9 +21,9 @@ export function Notice({
 }) {
   const tones = {
     info: "border-line text-muted",
-    error: "border-red/40 bg-red/10 text-red",
-    success: "border-lime/40 bg-lime/10 text-lime",
-    warn: "border-amber/40 bg-amber/10 text-amber",
+    error: "border-danger/40 bg-danger/10 text-danger",
+    success: "border-ok/40 bg-ok/10 text-ok",
+    warn: "border-warn/40 bg-warn/10 text-warn",
   };
   return (
     <div role={tone === "error" ? "alert" : "status"} className={`rounded-lg border px-3.5 py-2.5 text-sm ${tones[tone]}`}>
@@ -33,11 +33,11 @@ export function Notice({
 }
 
 const STATUS_TONE: Record<string, string> = {
-  paid: "border-lime/40 bg-lime/10 text-lime",
-  pending: "border-amber/40 bg-amber/10 text-amber",
-  cancelled: "border-red/40 bg-red/10 text-red",
+  paid: "border-ok/40 bg-ok/10 text-ok",
+  pending: "border-warn/40 bg-warn/10 text-warn",
+  cancelled: "border-danger/40 bg-danger/10 text-danger",
   expired: "border-line bg-panel-2 text-muted",
-  refunded: "border-cyan/40 bg-cyan/10 text-cyan",
+  refunded: "border-muted/50 bg-panel-2 text-text",
 };
 
 export function StatusPill({ status }: { status: string }) {

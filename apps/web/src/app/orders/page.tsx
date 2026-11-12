@@ -41,7 +41,7 @@ export default function OrdersPage() {
           <li key={order.id}>
             <Link
               href={order.status === "pending" ? `/checkout/${order.hold_id}` : `/orders/${order.id}`}
-              className="panel flex flex-wrap items-center justify-between gap-4 p-4 transition-colors hover:border-violet/60"
+              className="panel flex flex-wrap items-center justify-between gap-4 p-4 transition-colors hover:border-primary/60"
             >
               <div className="min-w-0">
                 <p className="truncate font-display text-lg font-semibold">

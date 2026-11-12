@@ -100,7 +100,7 @@ export default function CheckoutPage() {
       <div className="mx-auto max-w-3xl space-y-6">
         {order.data.status === "pending" && (
           <div className="panel rise flex items-center gap-4 p-5">
-            <span aria-hidden className="size-10 animate-spin rounded-full border-4 border-line border-t-cyan" />
+            <span aria-hidden className="size-10 animate-spin rounded-full border-4 border-line border-t-secondary" />
             <div>
               <p className="font-display text-xl font-semibold">Processing payment</p>
               <p className="text-sm text-muted" role="status">
@@ -147,16 +147,20 @@ export default function CheckoutPage() {
       ) : (
         <div
           className={`panel flex items-center justify-between gap-4 p-4 ${
-            secondsLeft < 60 ? "border-red/50" : ""
+            secondsLeft < 60 ? "border-danger/60" : ""
           }`}
         >
           <div>
             <p className="font-medium">Your picks are held</p>
-            <p className="text-sm text-muted">Nobody else can take them until the timer ends.</p>
+            <p className="text-sm text-muted">
+              {secondsLeft < 60
+                ? "Less than a minute left. Pay now to keep them."
+                : "Nobody else can take them until the timer ends."}
+            </p>
           </div>
           <p
             className={`font-mono text-4xl font-semibold tabular-nums ${
-              secondsLeft < 60 ? "pulse-soft text-red" : "text-cyan"
+              secondsLeft < 60 ? "pulse-soft text-danger" : "text-primary"
             }`}
             role="timer"
             aria-label="Time left on your hold"
@@ -197,7 +201,7 @@ export default function CheckoutPage() {
                   <label
                     key={option.id}
                     className={`cursor-pointer rounded-lg border p-3 transition-colors ${
-                      method === option.id ? "border-violet bg-violet/10" : "border-line hover:border-muted"
+                      method === option.id ? "border-primary bg-primary/10" : "border-line hover:border-muted"
                     }`}
                   >
                     <input

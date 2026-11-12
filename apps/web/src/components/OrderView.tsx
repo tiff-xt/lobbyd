@@ -30,7 +30,7 @@ export function OrderView({ order }: { order: Order }) {
         <div>
           <p className="label">Order</p>
           <h1 className="font-display text-2xl font-bold sm:text-3xl">
-            <Link href={`/t/${order.tournament.slug}`} className="hover:text-cyan">
+            <Link href={`/t/${order.tournament.slug}`} className="hover:text-secondary">
               {order.tournament.title}
             </Link>
           </h1>

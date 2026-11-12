@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     "Demo client for lobbyd, a ticketing backend for gaming tournaments and LAN events.",
 };
 
-export const viewport: Viewport = { themeColor: "#07080d" };
+export const viewport: Viewport = { themeColor: "#09090a" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

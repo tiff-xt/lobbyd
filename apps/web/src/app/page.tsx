@@ -39,7 +39,7 @@ export default function Home() {
         <p className="label">Tournaments and LAN events</p>
         <h1 className="mt-2 max-w-3xl font-display text-4xl font-bold leading-[1.05] sm:text-6xl">
           Grab a seat before the{" "}
-          <span className="bg-gradient-to-r from-violet to-cyan bg-clip-text text-transparent">
+          <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             lobby fills
           </span>
         </h1>
@@ -127,7 +127,7 @@ function Chip({
       onClick={onClick}
       className={`rounded-full border px-3 py-1 text-sm transition-colors ${
         active
-          ? "border-violet bg-violet/15 text-text"
+          ? "border-primary bg-primary/15 text-text"
           : "border-line text-muted hover:border-muted hover:text-text"
       }`}
     >
@@ -142,16 +142,16 @@ function TournamentCard({ tournament }: { tournament: TournamentSummary }) {
   return (
     <Link
       href={`/t/${tournament.slug}`}
-      className="panel rise group flex h-full flex-col gap-4 p-4 transition-colors hover:border-violet/60"
+      className="panel rise group flex h-full flex-col gap-4 p-4 transition-colors hover:border-primary/60"
     >
       <div className="flex items-start gap-3">
         <div className="grid w-12 shrink-0 place-items-center rounded-lg border border-line bg-bg py-1.5 text-center">
-          <span className="font-mono text-[10px] tracking-widest text-cyan">{date.month}</span>
+          <span className="font-mono text-[10px] tracking-widest text-secondary">{date.month}</span>
           <span className="font-display text-xl font-bold leading-none">{date.day}</span>
         </div>
         <div className="min-w-0">
           <p className="label truncate">{tournament.game}</p>
-          <h2 className="mt-0.5 font-display text-lg font-semibold leading-snug group-hover:text-cyan">
+          <h2 className="mt-0.5 font-display text-lg font-semibold leading-snug group-hover:text-secondary">
             {tournament.title}
           </h2>
         </div>
@@ -170,8 +170,8 @@ function TournamentCard({ tournament }: { tournament: TournamentSummary }) {
       </dl>
       <p className="flex items-center gap-2 border-t border-line pt-3 text-sm text-muted">
         {live && (
-          <span className="inline-flex items-center gap-1.5 text-red">
-            <span className="pulse-soft size-1.5 rounded-full bg-red" /> Live now
+          <span className="inline-flex items-center gap-1.5 text-danger">
+            <span className="pulse-soft size-1.5 rounded-full bg-danger" /> Live now
           </span>
         )}
         {!live && dateTime(tournament.starts_at, tournament.venue?.timezone)}

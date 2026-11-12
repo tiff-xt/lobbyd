@@ -68,13 +68,13 @@ export function SeatPicker({ seatMap, ticketTypes, taken, selected, currency, on
               aria-selected={active}
               onClick={() => setOpenId(section.id)}
               className={`relative overflow-hidden rounded-lg border px-2.5 py-1.5 text-left transition-colors ${
-                active ? "border-violet bg-violet/10" : "border-line hover:border-muted"
+                active ? "border-primary bg-primary/10" : "border-line hover:border-muted"
               }`}
             >
               <span className="flex items-baseline justify-between gap-2">
                 <span className="truncate text-sm font-medium">{section.name}</span>
                 {section.picked > 0 && (
-                  <span className="rounded bg-cyan px-1.5 text-xs font-bold text-bg">
+                  <span className="rounded bg-primary px-1.5 text-xs font-bold text-bg">
                     {section.picked}
                   </span>
                 )}
@@ -87,7 +87,7 @@ export function SeatPicker({ seatMap, ticketTypes, taken, selected, currency, on
               <span
                 aria-hidden
                 className={`absolute inset-x-0 bottom-0 h-0.5 origin-left ${
-                  ratio > 0.5 ? "bg-lime" : ratio > 0.15 ? "bg-amber" : "bg-red"
+                  ratio > 0.5 ? "bg-ok" : ratio > 0.15 ? "bg-warn" : "bg-danger"
                 }`}
                 style={{ transform: `scaleX(${ratio})` }}
               />
@@ -97,8 +97,8 @@ export function SeatPicker({ seatMap, ticketTypes, taken, selected, currency, on
       </div>
 
       <div className="panel overflow-x-auto p-4" role="tabpanel" aria-label={open.name}>
-        <div className="mx-auto mb-4 w-2/3 rounded-b-3xl border border-t-0 border-cyan/30 bg-cyan/5 py-1 text-center">
-          <span className="label !text-cyan">Stage</span>
+        <div className="mx-auto mb-4 w-2/3 rounded-b-3xl border border-t-0 border-secondary/30 bg-secondary/5 py-1 text-center">
+          <span className="label !text-secondary">Stage</span>
         </div>
         <div className="mx-auto flex w-max flex-col gap-1">
           {open.rows.map((row) => (
@@ -119,10 +119,10 @@ export function SeatPicker({ seatMap, ticketTypes, taken, selected, currency, on
                       onClick={() => onToggle(seat.id)}
                       className={`size-5 rounded-[5px] border text-[0px] transition-[transform,background-color] ${
                         isSelected
-                          ? "scale-110 border-cyan bg-cyan shadow-[0_0_10px] shadow-cyan/60"
+                          ? "scale-110 border-primary bg-primary shadow-[0_0_12px] shadow-primary/70"
                           : isTaken
                             ? "cursor-not-allowed border-transparent bg-line/60"
-                            : "border-lime/50 bg-lime/15 hover:bg-lime/50 disabled:cursor-not-allowed disabled:opacity-40"
+                            : "border-ok/50 bg-ok/15 hover:bg-ok/50 disabled:cursor-not-allowed disabled:opacity-40"
                       }`}
                     >
                       {seat.number}
@@ -134,8 +134,8 @@ export function SeatPicker({ seatMap, ticketTypes, taken, selected, currency, on
           ))}
         </div>
         <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-muted">
-          <Legend className="border-lime/50 bg-lime/15" label="Available" />
-          <Legend className="border-cyan bg-cyan" label="Your pick" />
+          <Legend className="border-ok/50 bg-ok/15" label="Available" />
+          <Legend className="border-primary bg-primary" label="Your pick" />
           <Legend className="border-transparent bg-line/60" label="Taken" />
         </div>
       </div>
