@@ -25,8 +25,10 @@ function buildSeats(): Seat[] {
       const centre = 1 - Math.abs(i / (count - 1) - 0.5) * 2;
       const demand = centre * 0.5 + (1 - row / ROWS) * 0.35;
       seats.push({
-        x: 300 + Math.sin(angle) * radius * 1.12,
-        y: 30 + Math.cos(angle) * radius * 0.62,
+        // Rounded: the server and the browser can differ in the last digit
+        // of sin and cos, and React then sees two different pages.
+        x: Math.round((300 + Math.sin(angle) * radius * 1.12) * 100) / 100,
+        y: Math.round((30 + Math.cos(angle) * radius * 0.62) * 100) / 100,
         size: 7 + row * 0.75,
         state: roll < demand * 0.18 ? "gold" : roll < demand * 0.9 ? "taken" : "free",
       });
@@ -182,10 +184,6 @@ export function ArenaHero({ className = "" }: { className?: string }) {
           <stop offset="0.45" stopColor="#ff9f1c" stopOpacity="0.1" />
           <stop offset="1" stopColor="#ff9f1c" stopOpacity="0" />
         </radialGradient>
-        <linearGradient id="arena-beam" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ffe9a8" stopOpacity="0.55" />
-          <stop offset="1" stopColor="#ffd166" stopOpacity="0" />
-        </linearGradient>
         <filter id="arena-glow" x="-100%" y="-100%" width="300%" height="300%">
           <feGaussianBlur stdDeviation="3" result="b" />
           <feMerge>
@@ -196,9 +194,6 @@ export function ArenaHero({ className = "" }: { className?: string }) {
       </defs>
 
       <ellipse cx="300" cy="20" rx="330" ry="330" fill="url(#arena-wash)" />
-      {/* Two stage lights, sweeping in opposite directions. */}
-      <polygon className="beam beam-a" points="300,24 150,360 290,360" fill="url(#arena-beam)" />
-      <polygon className="beam beam-b" points="300,24 320,360 470,360" fill="url(#arena-beam)" />
 
       {seats.map((seat, i) => (
         <rect
@@ -211,7 +206,7 @@ export function ArenaHero({ className = "" }: { className?: string }) {
           y={seat.y - seat.size / 2}
           width={seat.size}
           height={seat.size}
-          rx={seat.size * 0.28}
+          rx={Math.round(seat.size * 28) / 100}
           style={{ fill: FILL[seat.state], fillOpacity: seat.state === "free" ? 0.42 : 1 }}
         />
       ))}

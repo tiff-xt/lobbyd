@@ -365,33 +365,6 @@ a:hover > .logo-mark {
   animation: confetti 1.5s cubic-bezier(0.1, 0.7, 0.3, 1) both;
 }
 
-/* Stage lights sweeping over the hero arena. */
-@keyframes sweep-a {
-  from {
-    transform: rotate(-16deg);
-  }
-  to {
-    transform: rotate(13deg);
-  }
-}
-@keyframes sweep-b {
-  from {
-    transform: rotate(15deg);
-  }
-  to {
-    transform: rotate(-12deg);
-  }
-}
-.beam {
-  transform-origin: 300px 24px;
-  mix-blend-mode: screen;
-}
-.beam-a {
-  animation: sweep-a 7s ease-in-out infinite alternate;
-}
-.beam-b {
-  animation: sweep-b 9s ease-in-out infinite alternate;
-}
 .arena-seat {
   transform-box: fill-box;
   transform-origin: center;
@@ -441,7 +414,6 @@ a:hover > .logo-mark {
   .seat-in,
   .logo-seat,
   .deal,
-  .beam,
   .confetti {
     animation: none;
   }

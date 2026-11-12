@@ -9,7 +9,9 @@ A public demo on free plans only: no credit card, nothing that expires. It takes
 | Redis | Render Key Value (free) | No command quota, which matters because workers poll |
 | Postgres | Neon (free) | Does not expire. Render's free Postgres is deleted after 30 days |
 
-> Free plans change. These steps were written in November 2026 from the providers' published terms and have not been run by the author of this repository: the configuration is checked in CI as far as it can be (the image builds, the demo process is tested locally against a real Postgres and Redis), but the three dashboards below are yours to click through. If a step no longer matches what you see, the provider changed it.
+> Free plans change. These steps were followed in November 2026 to put up [lobbyd.vercel.app](https://lobbyd.vercel.app). If a step no longer matches what you see, the provider changed it.
+>
+> One thing differed from the plan: a Neon account that was created through Vercel can only add databases from Vercel's **Storage** tab (Create Database, Neon), not from the Neon console. Use the `DATABASE_URL_UNPOOLED` value it gives you.
 
 ## What is different about the demo
 
