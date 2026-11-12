@@ -1,23 +1,20 @@
 "use client";
 
-import QRCode from "qrcode";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Ticket } from "@/lib/api";
+import { seatName } from "@/lib/format";
+import { BrandedQR } from "./BrandedQR";
+import { Logo } from "./Logo";
 
 export function TicketCard({ ticket, title }: { ticket: Ticket; title: string }) {
-  const [qr, setQr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showing, setShowing] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    let current = true;
-    // The code is a token signed by the server. A scanner can tell it is
-    // genuine with only a public key, even with no network.
-    QRCode.toString(ticket.token, { type: "svg", margin: 1, color: { dark: "#09090a", light: "#ffffff" } })
-      .then((svg) => current && setQr(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`))
-      .catch(() => current && setQr(null));
-    return () => {
-      current = false;
-    };
-  }, [ticket.token]);
+    if (showing) dialog.current?.showModal();
+    else dialog.current?.close();
+  }, [showing]);
+  const label = `QR code for ticket ${ticket.id}`;
 
   return (
     <article
@@ -56,14 +53,49 @@ export function TicketCard({ ticket, title }: { ticket: Ticket; title: string })
           </button>
         )}
       </div>
-      <div className="grid w-32 shrink-0 place-items-center border-l border-dashed border-line bg-white p-2">
-        {qr ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a generated data URL, nothing to optimise
-          <img src={qr} alt={`QR code for ticket ${ticket.id}`} className="size-full" />
-        ) : (
-          <span className="text-xs text-bg">QR</span>
+      <button
+        type="button"
+        className="group/qr grid w-36 shrink-0 place-items-center border-l border-dashed border-line bg-[#fffaf0] p-1.5 transition-transform hover:scale-[1.03] disabled:pointer-events-none"
+        disabled={ticket.status === "void"}
+        title="Show full size for the door"
+        aria-label="Show the QR code full size"
+        onClick={() => setShowing(true)}
+      >
+        <BrandedQR value={ticket.token} label={label} />
+      </button>
+
+      {/* Full size, bright, and nothing else: what you hold up at the door. */}
+      <dialog
+        ref={dialog}
+        className="m-auto w-[min(92vw,26rem)] rounded-3xl bg-[#fffaf0] p-0 text-[#09090a] shadow-2xl backdrop:bg-black/80 backdrop:backdrop-blur-sm"
+        onClose={() => setShowing(false)}
+        onClick={(event) => event.target === dialog.current && setShowing(false)}
+      >
+        {showing && (
+          <div className="space-y-3 p-5">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 font-display text-lg font-bold tracking-wide">
+                <Logo size={26} /> lobbyd
+              </span>
+              <button
+                type="button"
+                className="rounded-full px-3 py-1 text-sm text-[#09090a]/60 hover:bg-black/5"
+                onClick={() => setShowing(false)}
+              >
+                Close
+              </button>
+            </div>
+            <BrandedQR value={ticket.token} label={label} />
+            <div className="border-t border-dashed border-black/20 pt-3 text-center">
+              <p className="font-display text-lg font-semibold leading-snug">{title}</p>
+              <p className="text-sm text-[#09090a]/70">
+                {ticket.ticket_type_name}
+                {ticket.seat ? ` · ${seatName(ticket.seat)}` : ""}
+              </p>
+            </div>
+          </div>
         )}
-      </div>
+      </dialog>
     </article>
   );
 }
