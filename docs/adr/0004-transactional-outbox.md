@@ -60,4 +60,4 @@ No job-queue library is used. The outbox plus a consumer group covers what is ne
 
 ## Later: extracted
 
-The mechanism now lives in the [oncely](../../libs/oncely) package, with its own tests. lobbyd keeps a thin module over it for what is specific to this service.
+The mechanism now lives in the [oncely](https://github.com/tiff-xt/oncely) package, with its own tests. lobbyd keeps a thin module over it for what is specific to this service.

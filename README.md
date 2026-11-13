@@ -112,9 +112,9 @@ Try the failure modes yourself with the `payment_method` field of `POST /orders`
 
 ## The reusable part: oncely
 
-The two mechanisms under every purchase are not specific to tickets, so they live in their own package, [`libs/oncely`](libs/oncely): idempotency keys and a transactional outbox for async SQLAlchemy and Postgres, with a Redis Streams consumer that retries and dead-letters. lobbyd depends on it like any other library and adds only what is its own: the HTTP header, the error format, trace context and metrics.
+The two mechanisms under every purchase are not specific to tickets, so they are their own library, [oncely](https://github.com/tiff-xt/oncely), published on [PyPI](https://pypi.org/project/oncely/): idempotency keys and a transactional outbox for async SQLAlchemy and Postgres, with a Redis Streams consumer that retries and dead-letters. lobbyd installs it like any other dependency and adds only what is its own: the HTTP header, the error format, trace context and metrics.
 
-It has its own tests against a real Postgres and Redis, including the races (twelve retries of one key at once, two relays competing for the same events), and builds as a wheel with `npx nx run oncely:package`.
+It has its own tests against a real Postgres and Redis, including the races: twelve retries of one key at once, and two relays competing for the same events.
 
 ## Running it
 
@@ -183,7 +183,6 @@ apps/api/            FastAPI application
 apps/paysim/         payment provider simulator (separate service)
 apps/web/            demo client (Next.js)
 libs/api-client/     TypeScript types generated from the API's OpenAPI document
-libs/oncely/       idempotency keys and a transactional outbox, as a standalone package
 docs/                design, data model, decision records, roadmap
 ops/                 local infrastructure config
 ```

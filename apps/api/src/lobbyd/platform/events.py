@@ -13,14 +13,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
+from oncely import Event
+from oncely.streams import Result, StreamConsumer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lobbyd.config import Settings
 from lobbyd.platform import metrics, tracing
 from lobbyd.platform.outbox import STREAM
-from oncely import Event
-from oncely.streams import Result, StreamConsumer
 
 log = structlog.get_logger()
 

@@ -9,17 +9,17 @@ consumer must be safe to run twice.
 from datetime import timedelta
 from typing import Any
 
+from oncely import Outbox
+from oncely.streams import stream_publisher
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lobbyd.platform import metrics, tracing
 from lobbyd.platform.db import Base
-from oncely import Outbox
-from oncely.streams import stream_publisher
 
 STREAM = "lobbyd:events"
 
-# The mechanism lives in the oncely package (libs/oncely). This module
+# The mechanism lives in the oncely package. This module
 # adds what is lobbyd's own: the stream name, trace context, metrics.
 _outbox = Outbox(Base.metadata)
 

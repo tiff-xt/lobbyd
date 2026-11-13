@@ -12,16 +12,16 @@ from datetime import timedelta
 from typing import Annotated
 
 from fastapi import Depends, Header, Request, Response
+from oncely import IdempotencyKeys, KeyReused, Refused, fingerprint, is_valid_key
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lobbyd.platform.db import Base
 from lobbyd.platform.errors import PROBLEM_JSON, ProblemError, problem_body
-from oncely import IdempotencyKeys, KeyReused, Refused, fingerprint, is_valid_key
 
 REPLAY_HEADER = "Idempotent-Replay"
 
-# The mechanism lives in the oncely package (libs/oncely). This module is
+# The mechanism lives in the oncely package. This module is
 # lobbyd's side of it: the header, the problem+json bodies, the HTTP response.
 _keys = IdempotencyKeys(Base.metadata)
 

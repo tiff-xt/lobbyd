@@ -4,8 +4,7 @@
   "projectType": "application",
   "sourceRoot": "apps/api/src",
   "implicitDependencies": [
-    "paysim",
-    "oncely"
+    "paysim"
   ],
   "targets": {
     "serve": {
