@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from onceonly import KeyReused, Outcome, Refused, fingerprint, is_valid_key
+from oncely import KeyReused, Outcome, Refused, fingerprint, is_valid_key
 
 from .conftest import SCHEMA, keys, things
 

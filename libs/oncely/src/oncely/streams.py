@@ -17,7 +17,7 @@ from typing import Any, Literal
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
-from onceonly.outbox import Event, Publisher
+from oncely.outbox import Event, Publisher
 
 Handler = Callable[[Event], Awaitable[None]]
 #: Wraps the handling of one event: open a span, bind log context, time it.

@@ -19,8 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from lobbyd.config import Settings
 from lobbyd.platform import metrics, tracing
 from lobbyd.platform.outbox import STREAM
-from onceonly import Event
-from onceonly.streams import Result, StreamConsumer
+from oncely import Event
+from oncely.streams import Result, StreamConsumer
 
 log = structlog.get_logger()
 
@@ -97,7 +97,7 @@ async def consume_once(ctx: EventContext, *, count: int = 50, block_ms: int | No
     worker died, then new ones. Returns how many were settled.
 
     Retries, takeover from dead workers and the dead-letter stream are the
-    onceonly consumer's. Handlers are idempotent, and events for different
+    oncely consumer's. Handlers are idempotent, and events for different
     orders are independent, so a batch is worked on together.
     """
     return await _consumer(ctx).run_once(count=count, block_ms=block_ms)

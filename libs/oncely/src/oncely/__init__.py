@@ -7,11 +7,11 @@ Two small tools for the same problem: a network that retries.
 - `Outbox` records an event in the same transaction as the change it
   describes, and a relay publishes it afterwards, at least once.
 
-`onceonly.streams` adds a Redis Streams publisher and a consumer with
+`oncely.streams` adds a Redis Streams publisher and a consumer with
 retries and a dead-letter stream. It needs the `redis` extra.
 """
 
-from onceonly.idempotency import (
+from oncely.idempotency import (
     IdempotencyKeys,
     KeyReused,
     Outcome,
@@ -19,7 +19,7 @@ from onceonly.idempotency import (
     fingerprint,
     is_valid_key,
 )
-from onceonly.outbox import Event, Outbox, Publisher
+from oncely.outbox import Event, Outbox, Publisher
 
 __all__ = [
     "Event",

@@ -4,8 +4,8 @@ from typing import Any
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from onceonly import Event
-from onceonly.streams import StreamConsumer, stream_publisher
+from oncely import Event
+from oncely.streams import StreamConsumer, stream_publisher
 
 from .conftest import outbox
 

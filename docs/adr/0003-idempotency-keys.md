@@ -66,4 +66,4 @@ Steps 2 and 3 are each sufficient to make a duplicate harmless. Both are kept: t
 
 ## Later: extracted
 
-The mechanism now lives in the [onceonly](../../libs/onceonly) package, with its own tests. lobbyd keeps a thin module over it for what is specific to this service.
+The mechanism now lives in the [oncely](../../libs/oncely) package, with its own tests. lobbyd keeps a thin module over it for what is specific to this service.

@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from onceonly import Event
+from oncely import Event
 
 from .conftest import SCHEMA, outbox, things
 
@@ -125,7 +125,7 @@ async def test_prune_removes_only_events_published_long_ago(sessionmaker: Sessio
 
 
 def test_ids_made_in_the_same_millisecond_still_sort_in_order() -> None:
-    from onceonly.outbox import uuid7
+    from oncely.outbox import uuid7
 
     ids = [uuid7() for _ in range(5000)]
     assert ids == sorted(ids)

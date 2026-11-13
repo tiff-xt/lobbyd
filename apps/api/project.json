@@ -5,7 +5,7 @@
   "sourceRoot": "apps/api/src",
   "implicitDependencies": [
     "paysim",
-    "onceonly"
+    "oncely"
   ],
   "targets": {
     "serve": {

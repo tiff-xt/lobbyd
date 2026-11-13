@@ -1,4 +1,4 @@
-"""Idempotency keys and the outbox move to the onceonly package's column names.
+"""Idempotency keys and the outbox move to the oncely package's column names.
 
 A key is scoped by any string, not only a user id, and an event carries
 general headers, of which the trace is one.

@@ -1,4 +1,4 @@
-# onceonly
+# oncely
 
 Idempotency keys and a transactional outbox for async SQLAlchemy and Postgres.
 
@@ -17,7 +17,7 @@ purchase and every payment.
 ## Install
 
 ```bash
-pip install "onceonly[redis]"
+pip install "oncely[redis]"
 ```
 
 The `redis` extra adds a Redis Streams publisher and consumer. Without it the
@@ -28,7 +28,7 @@ package needs only SQLAlchemy 2 and a Postgres driver such as asyncpg.
 Attach the table to your metadata, so your own migrations create it:
 
 ```python
-from onceonly import IdempotencyKeys, Refused, fingerprint
+from oncely import IdempotencyKeys, Refused, fingerprint
 
 keys = IdempotencyKeys(Base.metadata)
 ```
@@ -83,7 +83,7 @@ on a timer to drop keys past your retry window.
 ## Transactional outbox
 
 ```python
-from onceonly import Outbox
+from oncely import Outbox
 
 outbox = Outbox(Base.metadata)
 
@@ -96,7 +96,7 @@ async with sessionmaker.begin() as session:
 A relay moves events out. It takes any async function as the publisher:
 
 ```python
-from onceonly.streams import stream_publisher
+from oncely.streams import stream_publisher
 
 publish = stream_publisher(redis, "shop:events")
 
@@ -121,7 +121,7 @@ caused it.
 ## Consuming from Redis Streams
 
 ```python
-from onceonly.streams import StreamConsumer
+from oncely.streams import StreamConsumer
 
 worker = StreamConsumer(redis, stream="shop:events", max_attempts=5)
 
@@ -157,12 +157,12 @@ The suite runs against a real Postgres and Redis, including the races: twelve
 retries of one key at once, and two relays competing for the same events.
 
 ```bash
-ONCEONLY_TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost/db \
-ONCEONLY_TEST_REDIS_URL=redis://localhost:6379/14 \
+ONCELY_TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost/db \
+ONCELY_TEST_REDIS_URL=redis://localhost:6379/14 \
 pytest
 ```
 
-It works inside its own Postgres schema (`onceonly_test`) and drops it when done.
+It works inside its own Postgres schema (`oncely_test`) and drops it when done.
 
 ## License
 

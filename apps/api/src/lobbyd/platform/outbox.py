@@ -14,12 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lobbyd.platform import metrics, tracing
 from lobbyd.platform.db import Base
-from onceonly import Outbox
-from onceonly.streams import stream_publisher
+from oncely import Outbox
+from oncely.streams import stream_publisher
 
 STREAM = "lobbyd:events"
 
-# The mechanism lives in the onceonly package (libs/onceonly). This module
+# The mechanism lives in the oncely package (libs/oncely). This module
 # adds what is lobbyd's own: the stream name, trace context, metrics.
 _outbox = Outbox(Base.metadata)
 

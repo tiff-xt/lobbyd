@@ -17,11 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lobbyd.platform.db import Base
 from lobbyd.platform.errors import PROBLEM_JSON, ProblemError, problem_body
-from onceonly import IdempotencyKeys, KeyReused, Refused, fingerprint, is_valid_key
+from oncely import IdempotencyKeys, KeyReused, Refused, fingerprint, is_valid_key
 
 REPLAY_HEADER = "Idempotent-Replay"
 
-# The mechanism lives in the onceonly package (libs/onceonly). This module is
+# The mechanism lives in the oncely package (libs/oncely). This module is
 # lobbyd's side of it: the header, the problem+json bodies, the HTTP response.
 _keys = IdempotencyKeys(Base.metadata)
 
