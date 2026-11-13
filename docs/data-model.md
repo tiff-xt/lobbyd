@@ -398,7 +398,7 @@ CREATE INDEX waitlist_next_idx ON waitlist_entries (tournament_id, id) WHERE sta
 
 A team slot is counted inventory like a standing ticket, claimed through the same hold. What makes it a team is that the claim, the team row, and the roster rows are written in one transaction: a taken name or a player who is already on another team rolls the slot claim back too. The team is `pending` until the order for its hold is paid, and `withdrawn` if that hold lapses or the payment fails.
 
-A waitlist offer is a registration made on the captain's behalf with a longer hold (an hour by default, against ten minutes for a basket). The promoter takes entries in arrival order with `FOR UPDATE SKIP LOCKED`, so two workers never offer the same entry twice. The roster is only checked at that point, because who is free to play can change while a team waits. An entry that can no longer be registered lapses with the reason, and the slot goes to the next captain in the same pass.
+A waitlist offer is a registration made on the captain's behalf with a longer hold (an hour by default, against ten minutes for a basket). The promoter takes entries in arrival order, one worker at a time per tournament (a Postgres advisory lock held for the transaction). Locking only the entry was not enough: a second worker would skip the locked first-in-line and could give the free slot to the next captain instead. The roster is only checked at that point, because who is free to play can change while a team waits. An entry that can no longer be registered lapses with the reason, and the slot goes to the next captain in the same pass.
 
 ## Check-in
 

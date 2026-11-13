@@ -441,10 +441,21 @@ async def promote_waitlist(session: AsyncSession, settings: Settings, *, limit: 
     offers = 0
     for tournament_id in list(tournaments):
         slug = (await catalog.tournament_refs(session, [tournament_id]))[tournament_id].slug
+        # One worker at a time per tournament, held until this transaction
+        # ends. Locking only the entry is not enough: a second worker would
+        # skip the locked first-in-line, take the next captain, and could
+        # win the free slot ahead of them.
+        if not await session.scalar(
+            select(
+                func.pg_try_advisory_xact_lock(
+                    func.hashtextextended(f"waitlist:{tournament_id}", 0)
+                )
+            )
+        ):
+            continue  # another worker is promoting this tournament right now
         skipped: list[uuid.UUID] = []
         while offers < limit:
-            # Next in line. SKIP LOCKED: if another worker has that entry,
-            # this one moves on instead of waiting and offering it twice.
+            # Next in line, in the order they joined.
             entry = await session.scalar(
                 select(WaitlistEntry)
                 .where(
@@ -454,7 +465,7 @@ async def promote_waitlist(session: AsyncSession, settings: Settings, *, limit: 
                 )
                 .order_by(WaitlistEntry.id)
                 .limit(1)
-                .with_for_update(skip_locked=True)
+                .with_for_update()
             )
             if entry is None:
                 break
