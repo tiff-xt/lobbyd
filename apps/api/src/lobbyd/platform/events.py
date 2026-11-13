@@ -7,9 +7,6 @@ to a dead-letter stream after a fixed number of attempts, so one poison
 message cannot block the rest or retry forever.
 """
 
-import asyncio
-import json
-import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -17,19 +14,18 @@ from typing import Any
 
 import structlog
 from redis.asyncio import Redis
-from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lobbyd.config import Settings
 from lobbyd.platform import metrics, tracing
 from lobbyd.platform.outbox import STREAM
+from onceonly import Event
+from onceonly.streams import Result, StreamConsumer
 
 log = structlog.get_logger()
 
 GROUP = "workers"
-DEAD_LETTER_STREAM = "lobbyd:events:dead"
-_ATTEMPTS = "lobbyd:events:attempts"
-_CONCURRENCY = 16
+DEAD_LETTER_STREAM = f"{STREAM}:dead"
 
 
 @dataclass
@@ -52,86 +48,59 @@ def subscribe(topic: str, handler: Handler) -> None:
         handlers.append(handler)
 
 
-async def _ensure_group(redis: Redis) -> None:
+async def _around(event: Event, handle: Callable[[], Awaitable[None]]) -> None:
+    """Handle one event inside the trace of the request that emitted it."""
+    structlog.contextvars.bind_contextvars(event_id=str(event.id), topic=event.topic)
     try:
-        await redis.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
-    except ResponseError as exc:
-        if "BUSYGROUP" not in str(exc):  # already exists: fine
-            raise
+        with tracing.continued(
+            f"handle {event.topic}", event.headers, **{"messaging.message.id": str(event.id)}
+        ):
+            await handle()
+    finally:
+        structlog.contextvars.unbind_contextvars("event_id", "topic")
+
+
+def _report(event: Event, result: Result, seconds: float, error: BaseException | None) -> None:
+    metrics.EVENT_DURATION.labels(event.topic).observe(seconds)
+    metrics.EVENTS_HANDLED.labels(event.topic, result).inc()
+    context = {"event_id": str(event.id), "topic": event.topic, "exc_info": error}
+    if result == "retry":
+        log.warning("event_failed", **context)
+    elif result == "dead":
+        log.error("event_dead_lettered", **context)
+
+
+def _consumer(ctx: EventContext) -> StreamConsumer:
+    consumer = StreamConsumer(
+        ctx.redis,
+        stream=STREAM,
+        group=GROUP,
+        consumer=ctx.consumer,
+        retry_after_ms=ctx.settings.event_retry_after_ms,
+        max_attempts=ctx.settings.event_max_attempts,
+        dead_letter_stream=DEAD_LETTER_STREAM,
+        around=_around,
+        on_result=_report,
+    )
+    for topic, handlers in _handlers.items():
+        for handler in handlers:
+
+            async def call(event: Event, handler: Handler = handler) -> None:
+                await handler(ctx, event.payload)
+
+            consumer.subscribe(topic, call)
+    return consumer
 
 
 async def consume_once(ctx: EventContext, *, count: int = 50, block_ms: int | None = None) -> int:
     """Handle one batch: first events whose earlier attempt failed or whose
-    worker died, then new ones. Returns how many were handled successfully."""
-    await _ensure_group(ctx.redis)
+    worker died, then new ones. Returns how many were settled.
 
-    # Take over anything delivered but not acknowledged for long enough.
-    claimed: Any = await ctx.redis.xautoclaim(
-        STREAM,
-        GROUP,
-        ctx.consumer,
-        min_idle_time=ctx.settings.event_retry_after_ms,
-        start_id="0-0",
-        count=count,
-    )
-    fresh: Any = await ctx.redis.xreadgroup(
-        GROUP, ctx.consumer, {STREAM: ">"}, count=count, block=block_ms
-    )
-    messages: list[tuple[str, dict[str, str]]] = list(claimed[1])
-    messages += [message for _, batch in fresh for message in batch]
-
-    async def one(message_id: str, fields: dict[str, str]) -> bool:
-        if not fields:  # the entry was trimmed from the stream
-            await ctx.redis.xack(STREAM, GROUP, message_id)
-            return False
-        return await _handle(ctx, message_id, fields)
-
-    # Handlers mostly wait on the network (the payment provider, the
-    # database), so a batch is worked on together, not one event at a time.
-    # Handlers are idempotent and events for different orders are independent.
-    gate = asyncio.Semaphore(_CONCURRENCY)
-
-    async def limited(message: tuple[str, dict[str, str]]) -> bool:
-        async with gate:
-            return await one(*message)
-
-    return sum(await asyncio.gather(*(limited(message) for message in messages)))
-
-
-async def _handle(ctx: EventContext, message_id: str, fields: dict[str, str]) -> bool:
-    topic, event_id = fields["topic"], fields["id"]
-    structlog.contextvars.bind_contextvars(event_id=event_id, topic=topic)
-    carrier = json.loads(fields["trace"]) if "trace" in fields else None
-    started = time.perf_counter()
-    outcome = "ok"
-    try:
-        # A span that continues the trace of the request that emitted the event.
-        with tracing.continued(f"handle {topic}", carrier, **{"messaging.message.id": event_id}):
-            payload = json.loads(fields["payload"])
-            for handler in _handlers.get(topic, []):
-                await handler(ctx, payload)
-    except Exception:
-        attempts = await ctx.redis.hincrby(_ATTEMPTS, message_id, 1)
-        if attempts < ctx.settings.event_max_attempts:
-            # Leave it pending. It is retried once it has been idle long enough.
-            log.warning("event_failed", attempt=attempts, exc_info=True)
-            metrics.EVENTS_HANDLED.labels(topic, "retry").inc()
-            return False
-        log.error("event_dead_lettered", attempts=attempts, exc_info=True)
-        outcome = "dead"
-        dead: dict[Any, Any] = {**fields, "attempts": str(attempts)}
-        await ctx.redis.xadd(DEAD_LETTER_STREAM, dead)
-    finally:
-        metrics.EVENT_DURATION.labels(topic).observe(time.perf_counter() - started)
-        structlog.contextvars.unbind_contextvars("event_id", "topic")
-    metrics.EVENTS_HANDLED.labels(topic, outcome).inc()
-
-    # Reached on success, and after dead-lettering.
-    pipeline = ctx.redis.pipeline(transaction=False)
-    pipeline.xack(STREAM, GROUP, message_id)
-    pipeline.hdel(_ATTEMPTS, message_id)
-    await pipeline.execute()
-    return True
+    Retries, takeover from dead workers and the dead-letter stream are the
+    onceonly consumer's. Handlers are idempotent, and events for different
+    orders are independent, so a batch is worked on together.
+    """
+    return await _consumer(ctx).run_once(count=count, block_ms=block_ms)
 
 
 async def trim(redis: Redis, *, keep: int = 100_000) -> None:

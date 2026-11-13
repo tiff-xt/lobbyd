@@ -63,3 +63,7 @@ Steps 2 and 3 are each sufficient to make a duplicate harmless. Both are kept: t
 - Clients must generate and persist keys properly. The API rejects creating requests without one, so the mistake is caught early.
 - A crashed request leaves no key behind, because the row only exists inside the transaction that crashed.
 - A duplicate that arrives while the original is still running waits for it instead of failing fast. The wait is bounded by how long the original takes.
+
+## Later: extracted
+
+The mechanism now lives in the [onceonly](../../libs/onceonly) package, with its own tests. lobbyd keeps a thin module over it for what is specific to this service.

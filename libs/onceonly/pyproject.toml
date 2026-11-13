@@ -1,0 +1,36 @@
+[project]
+name = "onceonly"
+version = "0.1.0"
+description = "Idempotency keys and a transactional outbox for async SQLAlchemy and Postgres."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+keywords = ["idempotency", "outbox", "sqlalchemy", "postgres", "redis", "asyncio"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Typing :: Typed",
+]
+dependencies = ["sqlalchemy[asyncio]>=2.0.36"]
+
+[project.optional-dependencies]
+# The outbox publishes through any async function. This extra adds the
+# ready-made Redis Streams publisher and consumer.
+redis = ["redis>=5.2"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/onceonly"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

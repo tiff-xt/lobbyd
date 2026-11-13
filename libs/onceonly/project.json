@@ -1,0 +1,28 @@
+{
+  "name": "onceonly",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/onceonly/src",
+  "targets": {
+    "lint": {
+      "command": "uv run ruff check . && uv run ruff format --check .",
+      "options": { "cwd": "libs/onceonly" }
+    },
+    "format": {
+      "command": "uv run ruff check --fix . && uv run ruff format .",
+      "options": { "cwd": "libs/onceonly" }
+    },
+    "typecheck": {
+      "command": "uv run mypy src tests",
+      "options": { "cwd": "libs/onceonly" }
+    },
+    "test": {
+      "command": "uv run pytest",
+      "options": { "cwd": "libs/onceonly" }
+    },
+    "package": {
+      "command": "uv build --package onceonly --out-dir dist/onceonly",
+      "options": { "cwd": "." }
+    }
+  }
+}

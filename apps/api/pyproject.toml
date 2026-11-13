@@ -14,6 +14,7 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.14",
     "redis>=5.2",
+    "onceonly[redis]",
     "argon2-cffi>=23.1",
     "pyjwt>=2.10",
     "structlog>=24.4",
@@ -27,6 +28,9 @@ dependencies = [
     "opentelemetry-instrumentation-redis>=0.50b0",
     "opentelemetry-instrumentation-httpx>=0.50b0",
 ]
+
+[tool.uv.sources]
+onceonly = { workspace = true }
 
 [project.scripts]
 lobbyd-seed = "lobbyd.seed:main"

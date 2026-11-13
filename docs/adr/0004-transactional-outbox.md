@@ -57,3 +57,7 @@ No job-queue library is used. The outbox plus a consumer group covers what is ne
 - Events arrive a little late (the polling interval) and can arrive twice. Consumers are written for that.
 - With several relays, strict global ordering is not guaranteed. Events carry the entity's id and a sequence, and consumers that care about order apply guarded transitions, as with webhooks.
 - Outbox lag (age of the oldest unpublished row) is a key health metric.
+
+## Later: extracted
+
+The mechanism now lives in the [onceonly](../../libs/onceonly) package, with its own tests. lobbyd keeps a thin module over it for what is specific to this service.
