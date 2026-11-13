@@ -58,7 +58,7 @@ layers = [
     "lobbyd.main | lobbyd.seed | lobbyd.cli | lobbyd.worker",
     "lobbyd.wiring | lobbyd.reconcile",
     "lobbyd.assistant",
-    "lobbyd.brackets | lobbyd.organizer",
+    "lobbyd.brackets | lobbyd.organizer | lobbyd.tryit",
     "lobbyd.orders | lobbyd.teams",
     "lobbyd.inventory",
     "lobbyd.waitingroom | lobbyd.tickets | lobbyd.payments | lobbyd.notifications",

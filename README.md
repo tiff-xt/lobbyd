@@ -116,6 +116,10 @@ The two mechanisms under every purchase are not specific to tickets, so they are
 
 It has its own tests against a real Postgres and Redis, including the races: twelve retries of one key at once, and two relays competing for the same events.
 
+## Try to charge twice
+
+`POST /try/charges` is open to anyone, with no account: send the same `Idempotency-Key` as many times and as fast as you like, then `GET /try/charges/{key}` to see how many requests arrived and how many charges exist. It goes through the same code that guards every real hold and order, and its table has no unique constraint on the key, so a second charge would show up as a second row.
+
 ## Running it
 
 **Everything in Docker** (needs only Docker):

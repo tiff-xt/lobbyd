@@ -117,6 +117,37 @@
         "title": "BracketOut",
         "type": "object"
       },
+      "ChargeIn": {
+        "properties": {
+          "item": {
+            "const": "ticket",
+            "default": "ticket",
+            "title": "Item",
+            "type": "string"
+          }
+        },
+        "title": "ChargeIn",
+        "type": "object"
+      },
+      "ChargeOut": {
+        "properties": {
+          "amount_cents": {
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "charge_id": {
+            "format": "uuid",
+            "title": "Charge Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "charge_id",
+          "amount_cents"
+        ],
+        "title": "ChargeOut",
+        "type": "object"
+      },
       "ConversationDetail": {
         "properties": {
           "created_at": {
@@ -1791,6 +1822,26 @@
           "result"
         ],
         "title": "SyncedScan",
+        "type": "object"
+      },
+      "Tally": {
+        "properties": {
+          "charges_made": {
+            "description": "Rows in the charges table for this key",
+            "title": "Charges Made",
+            "type": "integer"
+          },
+          "requests_received": {
+            "description": "Every request the server saw for this key",
+            "title": "Requests Received",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requests_received",
+          "charges_made"
+        ],
+        "title": "Tally",
         "type": "object"
       },
       "TeamCounts": {
@@ -5033,6 +5084,110 @@
         "summary": "My place on the waitlist",
         "tags": [
           "teams"
+        ]
+      }
+    },
+    "/try/charges": {
+      "post": {
+        "description": "A demonstration with no account and no real money. Every request with the same Idempotency-Key returns the first response; repeats carry `Idempotent-Replay: true`.",
+        "operationId": "charge_try_charges_post",
+        "parameters": [
+          {
+            "description": "A random value (a UUID is ideal) generated once per intended action and sent again unchanged on every retry of it.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A random value (a UUID is ideal) generated once per intended action and sent again unchanged on every retry of it.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChargeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChargeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "summary": "Charge for a ticket. Send it as many times as you like",
+        "tags": [
+          "try it"
+        ]
+      }
+    },
+    "/try/charges/{key}": {
+      "get": {
+        "operationId": "tally_try_charges__key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tally"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          }
+        },
+        "summary": "How many requests arrived for a key, and how many charges exist",
+        "tags": [
+          "try it"
         ]
       }
     },

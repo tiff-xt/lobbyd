@@ -20,7 +20,7 @@ from collections.abc import Awaitable, Callable
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from lobbyd import reconcile
+from lobbyd import reconcile, tryit
 from lobbyd.config import get_settings
 from lobbyd.inventory import service as inventory
 from lobbyd.orders import payment_flow
@@ -117,6 +117,7 @@ class _Housekeeping:
             async with ctx.sessionmaker.begin() as session:
                 await idempotency.prune(session)
                 await outbox.prune(session)
+                await tryit.prune(session)
             await events.trim(ctx.redis)
             async with ctx.sessionmaker() as session:
                 await reconcile.run(session)

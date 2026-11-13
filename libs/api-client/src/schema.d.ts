@@ -660,6 +660,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/try/charges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Charge for a ticket. Send it as many times as you like
+         * @description A demonstration with no account and no real money. Every request with the same Idempotency-Key returns the first response; repeats carry `Idempotent-Replay: true`.
+         */
+        post: operations["charge_try_charges_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/try/charges/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How many requests arrived for a key, and how many charges exist */
+        get: operations["tally_try_charges__key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/me": {
         parameters: {
             query?: never;
@@ -877,6 +914,25 @@ export interface components {
              * Format: uuid
              */
             tournament_id: string;
+        };
+        /** ChargeIn */
+        ChargeIn: {
+            /**
+             * Item
+             * @default ticket
+             * @constant
+             */
+            item: "ticket";
+        };
+        /** ChargeOut */
+        ChargeOut: {
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Charge Id
+             * Format: uuid
+             */
+            charge_id: string;
         };
         /** ConversationDetail */
         ConversationDetail: {
@@ -1607,6 +1663,19 @@ export interface components {
              * @description admitted, duplicate, void, or rejected (not a ticket for this event)
              */
             result: string;
+        };
+        /** Tally */
+        Tally: {
+            /**
+             * Charges Made
+             * @description Rows in the charges table for this key
+             */
+            charges_made: number;
+            /**
+             * Requests Received
+             * @description Every request the server saw for this key
+             */
+            requests_received: number;
         };
         /** TeamCounts */
         TeamCounts: {
@@ -3445,6 +3514,73 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    charge_try_charges_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description A random value (a UUID is ideal) generated once per intended action and sent again unchanged on every retry of it. */
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChargeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChargeOut"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    tally_try_charges__key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tally"];
+                };
             };
             /** @description The request is not valid */
             422: {
